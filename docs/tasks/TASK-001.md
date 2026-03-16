@@ -129,8 +129,8 @@ src/cli/commands/
 - `name`: `agora`
 - `private`: `true`
 - scripts：`dev`、`build`、`start`、`lint`、`typecheck`、`test`
-- dependencies：`next`（15.x）、`react`、`react-dom`、`drizzle-orm`、`@auth/core`、`zod`、`zustand`
-- devDependencies：`typescript`、`@types/node`、`@types/react`、`eslint`、`vitest`、`drizzle-kit`、`postgres`（驱动）
+- dependencies：`next`（16.x）、`react`、`react-dom`、`drizzle-orm`、`postgres`、`zod`、`zustand`
+- devDependencies：`typescript`、`@types/node`、`@types/react`、`@types/react-dom`、`eslint`、`@eslint/js`、`@typescript-eslint/eslint-plugin`、`@typescript-eslint/parser`、`vitest`、`drizzle-kit`
 
 ### 5.2 tsconfig.json
 

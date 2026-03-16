@@ -60,7 +60,7 @@
 - Runtime: Node.js 22
 - DB: PostgreSQL (Supabase)
 - ORM: Drizzle ORM 0.45
-- Auth: NextAuth v5 / Auth.js
+- Auth: NextAuth v5 / Auth.js（Phase B 安装，A1/A2 不引入）
 - Gateway: OpenRouter
 - Streaming: SSE
 - Validation: Zod 4
