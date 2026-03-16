@@ -6,7 +6,7 @@ This repo implements Agora MVP strictly from frozen specs.
 ## Source of truth
 1. docs/spec/CORE_SPEC.md
 2. docs/spec/BUILD_ORDER.md
-3. current docs/tasks/TASK-XXX.md
+3. current docs/tasks/phase-*/TASK-XXX.md
 
 ## Hard rules
 - Do not invent schema fields, states, SSE events, or prompt semantics.
