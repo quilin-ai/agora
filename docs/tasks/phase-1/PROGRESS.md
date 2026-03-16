@@ -8,8 +8,8 @@
 当前状态：
 
 - 阶段状态：`In Progress`
-- 当前任务：`Task-001a`
-- 最近完成：`Task-005`
+- 当前任务：`Task-002a`
+- 最近完成：`Task-008`
 
 任务进度：
 
@@ -17,8 +17,8 @@
 - [x] Task-002
 - [x] Task-004
 - [x] Task-005
-- [ ] Task-001a
-- [ ] Task-008
+- [x] Task-001a
+- [x] Task-008
 - [ ] Task-009
 - [ ] Task-010
 - [ ] Task-011

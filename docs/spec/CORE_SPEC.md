@@ -39,6 +39,7 @@
 - Secretary 总结
 - SSE 流式事件
 - CLI-first 引擎闭环
+- TUI 终端演示包装（在 CLI 完整链路稳定后接入）
 - Web 最小壳接入
 
 ### MVP 不做
@@ -60,7 +61,7 @@
 - Runtime: Node.js 22
 - DB: PostgreSQL (Supabase)
 - ORM: Drizzle ORM 0.45
-- Auth: NextAuth v5 / Auth.js（Phase B 安装，A1/A2 不引入）
+- Auth: NextAuth v5 / Auth.js（Web 阶段安装，CLI / TUI 阶段不引入）
 - Gateway: OpenRouter
 - Streaming: SSE
 - Validation: Zod 4
@@ -82,16 +83,16 @@
 ## 3. Core Architecture Rules
 
 ### 逻辑分层
-- `src/lib/` = Core 层，CLI / Web 共用
-- `src/cli/` = CLI renderer
+- `src/lib/` = Core 层，CLI / TUI / Web 共用
+- `src/cli/` = CLI / TUI renderer
 - `src/app/` = Web renderer / route / page
 
 ### 分层铁律
 1. `src/lib/` 不得 import `src/cli/` 或 `src/app/`
 2. `src/cli/` 和 `src/app/` 可以 import `src/lib/`
 3. 业务逻辑只能写在 `src/lib/`
-4. CLI / Web 不共享 renderer 代码，只共享 core
-5. 任何同时被 CLI 和 Web 使用的逻辑必须放到 `src/lib/`
+4. CLI / TUI / Web 不共享 renderer 代码，只共享 core
+5. 任何同时被 CLI / TUI / Web 使用的逻辑必须放到 `src/lib/`
 
 ### 推荐目录
 ```text

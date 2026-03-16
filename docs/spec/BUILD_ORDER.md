@@ -31,19 +31,22 @@
 ## 1. Global Order
 
 ```text
-Phase A1（最小引擎闭环）:
+Phase 1（CLI 命令版）:
+  Phase A1:
   Task-001 → Task-002 → Task-004 → Task-005 → Task-001a
   → Task-008 → Task-009 → Task-010 → Task-011 → Task-012
   → Task-002a → Task-A1-E2E
 
-Phase A2（工程化加固）:
+  Phase A2:
   Task-007 → Task-A2-chat → Task-A2-tools
   → Task-A2-event → Task-A2-test → Task-015-CLI
 
-Phase B（Web 最小壳）:
+Phase 2（TUI 终端应用）:
+  TUI task group（待拆分）→ 在 Task-015-CLI 之后启动
+
+Phase 3（Web 图形化应用）:
   Task-003 → Task-006 → Task-013 → Task-016(核心页面) → Task-015-Web
 
-Phase C（产品化）:
   Task-016(剩余) → Task-017 → Task-018 → Task-019 → Task-020 → Task-021 → Task-022
 ```
 
@@ -159,11 +162,46 @@ A2 结束时必须满足：
 
 ---
 
-## 4. Phase B — Web 最小壳
+## 4. Phase 2 — TUI 终端应用
 
 ### 目标
 
-把已经打通的 core 接到 Web，而不是在 Web 里重造一套 Agora。
+在 CLI 命令链路已经稳定之后，把同一套 core、事件协议和 session-starter 包装成可持续驻留的终端应用，作为投资人演示原型。
+
+### 启动时机
+
+仅在以下条件成立后启动：
+
+* `Task-015-CLI` 已完成
+* CLI 全命令链路可用
+* 事件字段与 v3.1 SSE 定义逐字段对齐
+* `agora council run` 已可完整跑通
+
+### 设计铁律
+
+* TUI 只是新的 terminal renderer，不得改写 core 协议
+* TUI 不得新增 CLI / TUI 专属状态机、事件类型、summary schema、prompt 体系
+* TUI 必须复用 `src/lib/`、SSE 事件契约、session-starter、既有 DB schema
+* 先做终端中的交互式演示层，再做 Web 图形化应用
+
+### 本阶段交付形式
+
+* 交互式终端入口（持续驻留，而非单次命令退出）
+* 会话列表 / 当前讨论 / 事件流 / 输入区等终端面板
+* 基于已有 CLI 与 core 能力的演示脚本和投资人演示路径
+
+### 当前 gap
+
+* TUI 任务文件尚未拆分
+* 详细任务编号在 `Task-015-CLI` 完成后补齐
+
+---
+
+## 5. Phase 3 — Web 图形化应用
+
+### 目标
+
+在 CLI 与 TUI 两层都已经验证过核心流程之后，把同一套 core 接到 Web，并逐步补齐页面、登录、支付和产品化能力。
 
 ### 本阶段必须完成
 
@@ -191,21 +229,7 @@ B 结束时必须满足：
 * `can_stream=true/false` 行为正确
 * E01 / E06 通过
 
-### 本阶段不做
-
-* 完整 Landing 营销页面
-* Billing / Admin 全量产品化
-* 剩余非核心页面 polish
-
----
-
-## 5. Phase C — 产品化完善
-
-### 目标
-
-补齐剩余 P0 产品能力，达到 v3.1 最终完成定义。
-
-### 本阶段范围
+### 本阶段后续补齐
 
 * `Task-016(剩余)`
 * `Task-017`
@@ -214,19 +238,6 @@ B 结束时必须满足：
 * `Task-020`
 * `Task-021`
 * `Task-022`
-
-### 具体内容
-
-* Landing Page
-* Explore + OG
-* Settings + Billing
-* Admin
-* Followup API + FollowupBar
-* Share + Rate
-* 国际化
-* 剩余 E2E
-* Vercel 部署
-* 最终 checklist 清零
 
 ---
 
@@ -319,7 +330,7 @@ B 结束时必须满足：
 以下内容明确不允许插队：
 
 * 独立 CLI 产品设计
-* 复杂 TUI
+* 在 Phase 1 内提前做复杂 TUI
 * CLI 专属状态机
 * CLI 专属 summary schema
 * CLI 专属 prompt 体系
