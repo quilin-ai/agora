@@ -1,5 +1,7 @@
 import type { CompletionRequest, OpenRouterClient, StreamChunk } from '@/lib/orchestrator/types';
 
+type OpenRouterEnv = Readonly<Record<string, string | undefined>>;
+
 interface OpenRouterErrorPayload {
   error?: {
     message?: string;
@@ -33,15 +35,20 @@ interface OpenRouterStreamResponse {
   };
 }
 
-const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1';
-const DEFAULT_TIMEOUT_MS = 60_000;
+export const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+export const DEFAULT_OPENROUTER_TIMEOUT_MS = 60_000;
 
-export function createOpenRouterClient(): OpenRouterClient {
+export function createOpenRouterClient(params?: {
+  fetchImpl?: typeof globalThis.fetch;
+  env?: OpenRouterEnv;
+}): OpenRouterClient {
   return {
     async *streamCompletion(request: CompletionRequest) {
       const response = await postChatCompletion({
         request,
         stream: true,
+        fetchImpl: params?.fetchImpl,
+        env: params?.env,
       });
 
       if (!response.body) {
@@ -89,6 +96,8 @@ export function createOpenRouterClient(): OpenRouterClient {
       const response = await postChatCompletion({
         request,
         stream: false,
+        fetchImpl: params?.fetchImpl,
+        env: params?.env,
       });
       const payload = (await response.json()) as OpenRouterJsonResponse;
       const choice = payload.choices?.[0];
@@ -108,30 +117,34 @@ export function createOpenRouterClient(): OpenRouterClient {
 async function postChatCompletion(params: {
   request: CompletionRequest;
   stream: boolean;
+  fetchImpl?: typeof globalThis.fetch;
+  env?: OpenRouterEnv;
 }): Promise<globalThis.Response> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const env = params.env ?? process.env;
+  const apiKey = env.OPENROUTER_API_KEY;
 
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY environment variable is required');
   }
 
-  const timeoutMs = params.request.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = params.request.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS;
   const controller = new globalThis.AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await globalThis.fetch(
-      `${process.env.OPENROUTER_BASE_URL ?? DEFAULT_BASE_URL}/chat/completions`,
+    const fetchImpl = params.fetchImpl ?? globalThis.fetch;
+    const response = await fetchImpl(
+      `${env.OPENROUTER_BASE_URL ?? DEFAULT_OPENROUTER_BASE_URL}/chat/completions`,
       {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        ...(process.env.OPENROUTER_HTTP_REFERER
-          ? { 'HTTP-Referer': process.env.OPENROUTER_HTTP_REFERER }
+        ...(env.OPENROUTER_HTTP_REFERER
+          ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER }
           : {}),
-        ...(process.env.OPENROUTER_APP_TITLE
-          ? { 'X-Title': process.env.OPENROUTER_APP_TITLE }
+        ...(env.OPENROUTER_APP_TITLE
+          ? { 'X-Title': env.OPENROUTER_APP_TITLE }
           : {}),
       },
       body: JSON.stringify({
@@ -172,7 +185,7 @@ async function postChatCompletion(params: {
   }
 }
 
-function normalizeMessageContent(content: unknown): string {
+export function normalizeMessageContent(content: unknown): string {
   if (typeof content === 'string') {
     return content;
   }
@@ -201,7 +214,7 @@ function normalizeMessageContent(content: unknown): string {
   return '';
 }
 
-async function* readServerSentEvents(
+export async function* readServerSentEvents(
   body: globalThis.ReadableStream<Uint8Array>
 ): AsyncGenerator<string, void, void> {
   const reader = body.getReader();
@@ -241,7 +254,7 @@ async function* readServerSentEvents(
   }
 }
 
-async function* flushBuffer(buffer: string): AsyncGenerator<string, void, void> {
+export async function* flushBuffer(buffer: string): AsyncGenerator<string, void, void> {
   const normalized = buffer.replace(/\r\n/g, '\n').trim();
 
   if (!normalized) {

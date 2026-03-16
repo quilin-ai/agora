@@ -46,6 +46,7 @@ export async function runConsensusDiscussion(params: {
   lockStore?: ExecutionLockStore;
   billingResolver?: BillingResolver;
   now?: () => Date;
+  lockAlreadyAcquired?: boolean;
 }): Promise<void> {
   const repository = params.repository ?? (await createDefaultConsensusRepository());
   const promptStore = params.promptStore ?? (await createDefaultPromptTemplateStore());
@@ -55,12 +56,14 @@ export async function runConsensusDiscussion(params: {
   const billingResolver = params.billingResolver ?? createZeroBillingResolver();
   const now = params.now ?? (() => new Date());
 
-  const lockAcquired = await acquireLock(params.discussionId, lockHolder, params.lockStore);
-  if (!lockAcquired) {
-    throw new OrchestratorError(
-      `Discussion ${params.discussionId} is already running`,
-      'EXECUTION_LOCK_CONFLICT'
-    );
+  if (!params.lockAlreadyAcquired) {
+    const lockAcquired = await acquireLock(params.discussionId, lockHolder, params.lockStore);
+    if (!lockAcquired) {
+      throw new OrchestratorError(
+        `Discussion ${params.discussionId} is already running`,
+        'EXECUTION_LOCK_CONFLICT'
+      );
+    }
   }
 
   try {
@@ -84,7 +87,7 @@ export async function runConsensusDiscussion(params: {
       );
     }
 
-    hub.progress(discussion.id, 1, 'starting');
+    hub.progress(discussion.id, 1, 'independent');
 
     const round1 = await executeRound({
       discussion,
@@ -109,14 +112,23 @@ export async function runConsensusDiscussion(params: {
       },
       store: params.stateStore,
     });
-    hub.roundDone(discussion.id, 1);
+    hub.roundDone({
+      discussionId: discussion.id,
+      round: 1,
+      completedModels: round1.responses.map((response) => response.modelId),
+      skippedModels: round1.failures.map((failure) => failure.logical_model_id),
+      failedModels: round1.failures,
+      totalModels: discussion.modelIds.length,
+    });
 
     const mappings = await anonymizeModels({
       discussionId: discussion.id,
       modelIds: discussion.modelIds,
     });
+    hub.progress(discussion.id, 2, 'anonymous_review');
     hub.anonymize(
       discussion.id,
+      2,
       mappings.map((mapping) => mapping.anonymousLabel)
     );
 
@@ -144,8 +156,16 @@ export async function runConsensusDiscussion(params: {
       },
       store: params.stateStore,
     });
-    hub.roundDone(discussion.id, 2);
+    hub.roundDone({
+      discussionId: discussion.id,
+      round: 2,
+      completedModels: round2.responses.map((response) => response.modelId),
+      skippedModels: round2.failures.map((failure) => failure.logical_model_id),
+      failedModels: round2.failures,
+      totalModels: discussion.modelIds.length,
+    });
 
+    hub.progress(discussion.id, 3, 'rebuttal');
     const compressedContext = compressContext([
       { title: 'Round 1', content: anonymizeRoundResponses(round1.responses, mappings) },
       { title: 'Round 2', content: round2.responses.map(formatResponse).join('\n\n') },
@@ -169,12 +189,20 @@ export async function runConsensusDiscussion(params: {
       from: 'streaming',
       to: 'summarizing',
       updates: {
-        currentRound: 4,
+        currentRound: 3,
         lastCompletedRound: 3,
       },
       store: params.stateStore,
     });
-    hub.roundDone(discussion.id, 3);
+    hub.roundDone({
+      discussionId: discussion.id,
+      round: 3,
+      completedModels: round3.responses.map((response) => response.modelId),
+      skippedModels: round3.failures.map((failure) => failure.logical_model_id),
+      failedModels: round3.failures,
+      totalModels: discussion.modelIds.length,
+    });
+    hub.progress(discussion.id, 3, 'secretary_summary');
 
     const secretarySummary = await runSecretarySummary({
       discussionId: discussion.id,
@@ -184,6 +212,7 @@ export async function runConsensusDiscussion(params: {
         .flatMap((round) => round.responses)
         .map(formatResponse)
         .join('\n\n'),
+      participantModelIds: discussion.modelIds,
       promptStore,
       client,
       now,
@@ -197,8 +226,8 @@ export async function runConsensusDiscussion(params: {
       from: 'summarizing',
       to: 'completed',
       updates: {
-        currentRound: 4,
-        lastCompletedRound: 4,
+        currentRound: 3,
+        lastCompletedRound: 3,
         summary: secretarySummary,
         completedAt: now(),
         errorCode: null,
@@ -281,24 +310,40 @@ async function executeRound(params: {
         const next = await generator.next();
         if (next.done) {
           const result = next.value;
-          params.hub.modelDone(params.discussion.id, modelId, result.usage.completionTokens);
+          params.hub.modelDone({
+            discussionId: params.discussion.id,
+            logicalModelId: modelId,
+            actualModelId: modelId,
+            round: params.roundNumber,
+            inputTokens: result.usage.promptTokens,
+            outputTokens: result.usage.completionTokens,
+          });
           return {
             modelId,
+            actualModelId: modelId,
+            round: params.roundNumber,
             text: fullText,
+            inputTokens: result.usage.promptTokens,
             tokens: result.usage.completionTokens,
           } satisfies RoundModelResponse;
         }
 
         if (next.value.text) {
           fullText += next.value.text;
-          params.hub.chunk(params.discussion.id, modelId, next.value.text);
+          params.hub.chunk({
+            discussionId: params.discussion.id,
+            logicalModelId: modelId,
+            actualModelId: modelId,
+            round: params.roundNumber,
+            text: next.value.text,
+          });
         }
       }
     })
   );
 
   const responses: RoundModelResponse[] = [];
-  const failures: Array<{ modelId: string; errorMessage: string }> = [];
+  const failures: RoundExecutionResult['failures'] = [];
 
   settled.forEach((result, index) => {
     const modelId = params.discussion.modelIds[index];
@@ -311,8 +356,24 @@ async function executeRound(params: {
     const errorMessage =
       result.reason instanceof Error ? result.reason.message : 'Unknown model execution error';
 
-    params.hub.modelError(params.discussion.id, modelId, errorMessage);
-    failures.push({ modelId, errorMessage });
+    const failure = {
+      logical_model_id: modelId,
+      actual_model_id: null,
+      error_type: inferErrorType(errorMessage),
+      action: 'skipped' as const,
+    };
+
+    params.hub.modelError({
+      discussionId: params.discussion.id,
+      logicalModelId: modelId,
+      actualModelId: null,
+      round: params.roundNumber,
+      errorType: failure.error_type,
+      action: failure.action,
+      degradedTo: null,
+      message: errorMessage,
+    });
+    failures.push(failure);
   });
 
   if (responses.length < MIN_PARTICIPANT_MODELS) {
@@ -322,6 +383,7 @@ async function executeRound(params: {
       roundType: params.roundType,
       status: 'failed',
       modelResponses: responses,
+      failedModels: failures,
       startedAt,
       completedAt: params.now(),
     });
@@ -339,6 +401,7 @@ async function executeRound(params: {
     roundType: params.roundType,
     status: 'completed',
     modelResponses: responses,
+    failedModels: failures,
     startedAt,
     completedAt: params.now(),
   });
@@ -443,6 +506,28 @@ function formatResponse(response: RoundModelResponse): string {
   return `${response.modelId}\n${response.text}`.trim();
 }
 
+function inferErrorType(errorMessage: string): string {
+  const normalized = errorMessage.toLowerCase();
+
+  if (normalized.includes('timeout')) {
+    return 'timeout';
+  }
+
+  if (normalized.includes('rate')) {
+    return 'rate_limited';
+  }
+
+  if (normalized.includes('interrupt')) {
+    return 'stream_interrupted';
+  }
+
+  if (normalized.includes('filter')) {
+    return 'output_filtered';
+  }
+
+  return 'server_error';
+}
+
 function createZeroBillingResolver(): BillingResolver {
   return {
     async resolveForDiscussion() {
@@ -461,26 +546,26 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
     async getDiscussion(discussionId) {
       const records = await db
         .select()
-        .from(schema.discussions)
-        .where(eq(schema.discussions.id, discussionId))
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, discussionId))
         .limit(1);
 
-      const discussion = records[0];
-      if (!discussion) {
+      const conversation = records[0];
+      if (!conversation) {
         return null;
       }
 
       return {
-        id: discussion.id,
-        conversationId: discussion.conversationId,
-        topic: discussion.topic,
-        status: discussion.status,
-        currentRound: discussion.currentRound,
-        lastCompletedRound: discussion.lastCompletedRound,
-        modelIds: Array.isArray(discussion.modelIds)
-          ? discussion.modelIds.filter((modelId): modelId is string => typeof modelId === 'string')
+        id: conversation.id,
+        conversationId: conversation.id,
+        topic: conversation.topic ?? '',
+        status: conversation.status,
+        currentRound: conversation.currentRound ?? 0,
+        lastCompletedRound: conversation.lastCompletedRound ?? 0,
+        modelIds: Array.isArray(conversation.models)
+          ? conversation.models.filter((modelId): modelId is string => typeof modelId === 'string')
           : [],
-        summary: discussion.summary as DiscussionSummaryFinal | null,
+        summary: conversation.summary as DiscussionSummaryFinal | null,
       };
     },
     async saveRound(record) {
@@ -489,44 +574,67 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
         .from(schema.discussionRounds)
         .where(
           and(
-            eq(schema.discussionRounds.discussionId, record.discussionId),
-            eq(schema.discussionRounds.roundNumber, record.roundNumber)
+            eq(schema.discussionRounds.conversationId, record.discussionId),
+            eq(schema.discussionRounds.round, record.roundNumber)
           )
         )
         .limit(1);
+
+      const completedModels = record.modelResponses.map((response) => response.modelId);
+      const failedModels = record.failedModels ?? [];
+      const skippedModels = failedModels
+        .filter((failure) => failure.action === 'skipped')
+        .map((failure) => failure.logical_model_id);
+      const startedAt = record.startedAt ?? new Date();
+      const completedAt = record.completedAt ?? null;
+      const durationMs =
+        completedAt === null ? null : Math.max(0, completedAt.getTime() - startedAt.getTime());
+      const roundTraceId = `${record.discussionId}:round:${record.roundNumber}`;
 
       if (existing.length > 0) {
         await db
           .update(schema.discussionRounds)
           .set({
+            conversationId: record.discussionId,
+            round: record.roundNumber,
             roundType: record.roundType,
             status: record.status,
-            modelResponses: record.modelResponses,
-            startedAt: record.startedAt,
-            completedAt: record.completedAt,
+            completedModels,
+            skippedModels,
+            failedModels,
+            totalModels: completedModels.length + skippedModels.length,
+            roundTraceId,
+            startedAt,
+            completedAt,
+            durationMs,
           })
           .where(eq(schema.discussionRounds.id, existing[0].id));
         return;
       }
 
       await db.insert(schema.discussionRounds).values({
-        discussionId: record.discussionId,
-        roundNumber: record.roundNumber,
+        conversationId: record.discussionId,
+        round: record.roundNumber,
         roundType: record.roundType,
         status: record.status,
-        modelResponses: record.modelResponses,
-        startedAt: record.startedAt,
-        completedAt: record.completedAt,
+        completedModels,
+        skippedModels,
+        failedModels,
+        totalModels: completedModels.length + skippedModels.length,
+        roundTraceId,
+        startedAt,
+        completedAt,
+        durationMs,
       });
     },
     async saveSummary(discussionId, summary) {
       await db
-        .update(schema.discussions)
+        .update(schema.conversations)
         .set({
           summary,
           updatedAt: new Date(),
         })
-        .where(eq(schema.discussions.id, discussionId));
+        .where(eq(schema.conversations.id, discussionId));
     },
   };
 }

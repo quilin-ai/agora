@@ -1,17 +1,21 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
-import { discussions } from './discussions';
-import { executionStatusEnum } from './enums';
+import { conversations } from './conversations';
+import type { ExecutionStatusValue } from './enums';
 
 export const discussionExecutions = pgTable('discussion_executions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  discussionId: uuid('discussion_id')
+  conversationId: uuid('conversation_id')
     .notNull()
-    .references(() => discussions.id),
-  lockHolder: text('lock_holder').notNull(),
-  lockedAt: timestamp('locked_at', { withTimezone: true }).notNull().defaultNow(),
-  releasedAt: timestamp('released_at', { withTimezone: true }),
-  status: executionStatusEnum('status').notNull().default('running'),
-  errorCode: text('error_code'),
+    .references(() => conversations.id),
+  attempt: integer('attempt').notNull().default(1),
+  lockToken: text('lock_token').notNull(),
+  status: text('status').$type<ExecutionStatusValue>().notNull(),
   errorMessage: text('error_message'),
-});
+  serverlessInstanceId: text('serverless_instance_id'),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  durationMs: integer('duration_ms'),
+}, (table) => [
+  uniqueIndex('uq_execution').on(table.conversationId, table.attempt),
+]);

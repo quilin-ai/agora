@@ -1,4 +1,5 @@
 import type { BillingCost, DiscussionStatus, DiscussionSummaryFinal, RoundType, SSEEvent } from '@/lib/types';
+import type { ModelFailureRecord } from '@/lib/types';
 
 export interface DiscussionRuntimeRecord {
   id: string;
@@ -13,7 +14,10 @@ export interface DiscussionRuntimeRecord {
 
 export interface RoundModelResponse {
   modelId: string;
+  actualModelId: string;
+  round: number;
   text: string;
+  inputTokens: number;
   tokens: number;
 }
 
@@ -23,6 +27,7 @@ export interface RoundPersistenceRecord {
   roundType: RoundType;
   status: 'running' | 'completed' | 'failed';
   modelResponses: RoundModelResponse[];
+  failedModels?: ModelFailureRecord[];
   startedAt?: Date;
   completedAt?: Date;
 }
@@ -141,11 +146,41 @@ export interface BillingResolver {
 export interface StreamHub {
   emit(event: SSEEvent): void;
   progress(discussionId: string, round: number, phase: string): void;
-  chunk(discussionId: string, modelId: string, text: string): void;
-  modelDone(discussionId: string, modelId: string, tokens: number): void;
-  modelError(discussionId: string, modelId: string, errorMessage: string): void;
-  roundDone(discussionId: string, round: number): void;
-  anonymize(discussionId: string, labels: string[]): void;
+  chunk(params: {
+    discussionId: string;
+    logicalModelId: string;
+    actualModelId: string;
+    round: number;
+    text: string;
+    done?: boolean;
+  }): void;
+  modelDone(params: {
+    discussionId: string;
+    logicalModelId: string;
+    actualModelId: string;
+    round: number;
+    inputTokens: number;
+    outputTokens: number;
+  }): void;
+  modelError(params: {
+    discussionId: string;
+    logicalModelId: string;
+    actualModelId: string | null;
+    round: number;
+    errorType: string;
+    action: 'skipped' | 'retrying' | 'degraded';
+    degradedTo?: string | null;
+    message: string;
+  }): void;
+  roundDone(params: {
+    discussionId: string;
+    round: number;
+    completedModels: string[];
+    skippedModels: string[];
+    failedModels: ModelFailureRecord[];
+    totalModels: number;
+  }): void;
+  anonymize(discussionId: string, round: number, labels: string[]): void;
   summary(discussionId: string, summary: DiscussionSummaryFinal): void;
   done(discussionId: string, billing: BillingCost): void;
   restore(discussionId: string, status: DiscussionStatus, lastCompletedRound: number): void;
@@ -155,10 +190,7 @@ export interface StreamHub {
 
 export interface RoundExecutionResult {
   responses: RoundModelResponse[];
-  failures: Array<{
-    modelId: string;
-    errorMessage: string;
-  }>;
+  failures: ModelFailureRecord[];
 }
 
 export interface ContextSection {

@@ -30,7 +30,7 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
     async acquireLock(discussionId: string, lockHolder: string) {
       return db.transaction(async (tx) => {
         await tx.execute(
-          sql`select ${schema.discussions.id} from ${schema.discussions} where ${schema.discussions.id} = ${discussionId} for update`
+          sql`select ${schema.conversations.id} from ${schema.conversations} where ${schema.conversations.id} = ${discussionId} for update`
         );
 
         const active = await tx
@@ -38,9 +38,9 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
           .from(schema.discussionExecutions)
           .where(
             and(
-              eq(schema.discussionExecutions.discussionId, discussionId),
+              eq(schema.discussionExecutions.conversationId, discussionId),
               eq(schema.discussionExecutions.status, 'running'),
-              isNull(schema.discussionExecutions.releasedAt)
+              isNull(schema.discussionExecutions.completedAt)
             )
           )
           .limit(1);
@@ -50,8 +50,8 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
         }
 
         await tx.insert(schema.discussionExecutions).values({
-          discussionId,
-          lockHolder,
+          conversationId: discussionId,
+          lockToken: lockHolder,
           status: 'running',
         });
 
@@ -61,7 +61,7 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
     async releaseLock(discussionId: string, lockHolder: string, input?: LockReleaseInput) {
       return db.transaction(async (tx) => {
         await tx.execute(
-          sql`select ${schema.discussions.id} from ${schema.discussions} where ${schema.discussions.id} = ${discussionId} for update`
+          sql`select ${schema.conversations.id} from ${schema.conversations} where ${schema.conversations.id} = ${discussionId} for update`
         );
 
         const active = await tx
@@ -69,13 +69,13 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
           .from(schema.discussionExecutions)
           .where(
             and(
-              eq(schema.discussionExecutions.discussionId, discussionId),
-              eq(schema.discussionExecutions.lockHolder, lockHolder),
+              eq(schema.discussionExecutions.conversationId, discussionId),
+              eq(schema.discussionExecutions.lockToken, lockHolder),
               eq(schema.discussionExecutions.status, 'running'),
-              isNull(schema.discussionExecutions.releasedAt)
+              isNull(schema.discussionExecutions.completedAt)
             )
           )
-          .orderBy(desc(schema.discussionExecutions.lockedAt))
+          .orderBy(desc(schema.discussionExecutions.startedAt))
           .limit(1);
 
         if (active.length === 0) {
@@ -85,9 +85,8 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
         await tx
           .update(schema.discussionExecutions)
           .set({
-            releasedAt: new Date(),
+            completedAt: new Date(),
             status: input?.status ?? 'completed',
-            errorCode: input?.errorCode ?? null,
             errorMessage: input?.errorMessage ?? null,
           })
           .where(eq(schema.discussionExecutions.id, active[0].id));

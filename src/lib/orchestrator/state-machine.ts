@@ -53,12 +53,12 @@ async function createDefaultDiscussionStateStore(): Promise<DiscussionStateStore
       };
 
       const result = await db
-        .update(schema.discussions)
+        .update(schema.conversations)
         .set(updateSet)
         .where(
-          and(eq(schema.discussions.id, discussionId), eq(schema.discussions.status, from))
+          and(eq(schema.conversations.id, discussionId), eq(schema.conversations.status, from))
         )
-        .returning({ id: schema.discussions.id });
+        .returning({ id: schema.conversations.id });
 
       return result.length > 0;
     },

@@ -1,12 +1,39 @@
-import { numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, integer, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-// GAP: 字段来源待确认 — 使用施工指令指定的最小字段集
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  name: text('name').notNull(),
+  name: text('name'),
   avatarUrl: text('avatar_url'),
-  balance: numeric('balance', { precision: 20, scale: 8 }).notNull().default('0'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+  authProvider: text('auth_provider').notNull().default('google'),
+  authId: text('auth_id'),
+  plan: text('plan').notNull().default('free'),
+  creditsBalance: numeric('credits_balance', { precision: 10, scale: 4 }).default('0'),
+  creditsMonthly: numeric('credits_monthly', { precision: 10, scale: 4 }).default('0'),
+  freeFrontierRemaining: integer('free_frontier_remaining').default(3),
+  freeBudgetRemaining: integer('free_budget_remaining').default(5),
+  trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+  stripeCustomerId: text('stripe_customer_id'),
+  locale: text('locale').default('en'),
+  defaultModel: text('default_model').default('openai/gpt-5-mini'),
+  twitterHandle: text('twitter_handle'),
+  twitterAvatar: text('twitter_avatar'),
+  referralCode: text('referral_code').unique(),
+  referredBy: uuid('referred_by'),
+  referralRewardsEarned: integer('referral_rewards_earned').default(0),
+  teamId: uuid('team_id'),
+  roleInTeam: text('role_in_team'),
+  isBanned: boolean('is_banned').default(false),
+  banReason: text('ban_reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
+}, (table) => [
+  foreignKey({
+    columns: [table.referredBy],
+    foreignColumns: [table.id],
+    name: 'users_referred_by_fkey',
+  }),
+  index('idx_users_email').on(table.email),
+  index('idx_users_plan').on(table.plan),
+]);

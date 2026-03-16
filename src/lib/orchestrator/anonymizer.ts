@@ -91,10 +91,10 @@ async function createDefaultAnonymizationStore(): Promise<AnonymizationStore> {
 
       await db.insert(schema.discussionAnonymizationMaps).values(
         mappings.map((mapping) => ({
-          discussionId: mapping.discussionId,
-          roundNumber: mapping.roundNumber,
-          modelId: mapping.modelId,
-          anonymousLabel: mapping.anonymousLabel,
+          conversationId: mapping.discussionId,
+          round: mapping.roundNumber,
+          logicalModelId: mapping.modelId,
+          label: mapping.anonymousLabel,
         }))
       );
     },

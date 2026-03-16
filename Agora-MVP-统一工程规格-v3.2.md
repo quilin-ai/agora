@@ -1,0 +1,2427 @@
+# 合并策略摘要
+
+本节说明 v3.2 的来源与合并决策。v3.2 发布后，本节可从正文中移除。
+
+## 继承自原最终工程规格（v3.1）的内容
+
+以下内容 **原样保留**，仅做最小兼容修改：
+
+- 数据库 11 张表完整 schema（第五章）
+- 状态机白名单迁移规则（第四章）
+- SSE 11 个事件的字段定义和语义（第九章）
+- Prompt 冻结包 5 段正文（第十三章）
+- SecretaryRawOutput / SecretaryRawOutputSchema / DiscussionSummaryFinal 命名体系（第六、七章）
+- 计费口径（raw_cost → platform_price）和 hold / settle / release / refund 语义（第三章）
+- 容错规则：ROUND_RULES、MIN_MODELS_PER_ROUND、TTFT 超时等（第十一章）
+- 测试矩阵 U01-U20、I01-I12、E01-E06、C01-C06（第十九章）
+- 最终完成定义 checklist（第二十二章）
+- `src/lib/` 目录结构
+
+## 吸收自施工补丁（v3.1a）的内容
+
+以下内容已被 **有机并入对应章节**，不再作为独立补丁存在：
+
+- CLI-first 施工策略 → 并入第二章（施工策略与分层架构）
+- Core / Renderer 分层 → 并入第二章
+- ActorContext 显式传参 → 并入第七章（类型定义）和第十一章（Orchestrator）
+- session-starter 统一启动路径 → 并入第十一章
+- JSONL replay/debug artifact 定位 → 并入第二章
+- Phase A1 / A2 / B / C 施工顺序 → 并入第二十章（Task Graph）
+- CLI 命令清单 → 并入新增第二十一章（CLI 验证器）
+- Go / No-Go 验收标准 → 并入第二十一章
+- 非目标清单 → 并入第二十一章
+- CLI → Web 接入规则 → 并入第十一章
+- 事件优先原则 → 并入第九章
+
+## 冲突解决
+
+| 冲突 | 解决方案 |
+|------|---------|
+| `runConsensusDiscussion` 参数 `userId: string` vs `actor: ActorContext` | 统一为 `actor: ActorContext`。`ActorContext.userId` 等价原 `userId`，向后兼容 |
+| `GET /stream` 内联执行锁获取 vs `session-starter` 统一启动路径 | 提取 `session-starter.ts` 为唯一启动入口。API Route 和 CLI 均调用它。行为语义不变 |
+| v3.1 Task-003 认证是 Task-006 前置 vs CLI 阶段不需要 OAuth | Phase A 通过 `ActorContext` 传入 `{ userId: env.CLI_TEST_USER_ID, source: 'cli' }` 跳过认证。Phase B 恢复 Task-003 → Task-006 依赖 |
+| v3.1 Task Graph 线性顺序 vs v3.1a Phase A1/A2/B/C 分阶段 | 保留全部 Task-001~Task-022，新增 Phase A 任务组和 Task-015 拆分，统一为四阶段施工路径 |
+
+## 本文档的定位
+
+本文档是 **Agora MVP 的唯一工程规格源**。不存在需要交叉引用的补丁文档、附录或双轨方案。工程 Agent 和开发者按本文施工。
+
+---
+
+# Agora-MVP-统一工程规格-v3.2
+
+> **文档性质**：这是 **Agora MVP 的最终工程实现规格**，是唯一施工规格源。
+> **施工方式**：1 人 + Coding Agent（Claude Code / Codex）。Agent 按本文实现，不得自行推断核心语义。
+> **施工策略**：CLI-first。先用 CLI 验证引擎核心能力，再接入 Web。详见第二章。
+> **MVP 边界**：只实现共识模式 3 轮讨论。所有 `[FUTURE]` 标记的能力不在 MVP 中实现。
+> **计费口径**：raw_cost（上游 API 原价）为计算基础，转换为 platform_price 只在 hold/settle 中执行一次。
+
+---
+
+## 一、Agent 实施铁律
+
+本文档的每一条规则、每一个字段、每一段代码构成统一的单一真相源。工程 Agent 必须遵守以下铁律：
+
+1. **不得自创字段** — 数据库字段以本文 schema 为准。需要新字段必须报缺口。
+2. **不得自创状态** — 状态机白名单迁移规则不可扩展。需要新状态必须报缺口。
+3. **不得改写 Prompt** — Prompt 冻结包中的正文即为 MVP 首版 prompt。修改需报缺口。
+4. **不得改写计费规则** — hold/settle/release/refund 语义和口径不可变更。
+5. **不得替换 SSE** — SSE 事件协议不可改为 WebSocket 或 polling。
+6. **不得省略测试** — 测试矩阵中列出的所有测试必须实现。
+7. **不得在核心路径保留 TODO** — 所有 P0 功能必须实现完整，不得用 TODO 占位。
+8. **遇到规格缺失只能报缺口** — 发现本文未覆盖的场景时，Agent 必须停下来报告，不得自行脑补实现。
+9. **不得破坏 Core / Renderer 分层** — `src/lib/` 下的代码不得 import `src/cli/` 或 `src/app/` 下的任何模块。
+10. **示例代码不是新增协议来源** — 本文中的代码片段用于说明职责边界和调用关系。函数签名、参数名、返回类型以类型定义章节为最终标准。
+
+---
+
+## 二、施工策略与分层架构
+
+### 2.1 CLI-first 施工策略
+
+Agora 的产品价值取决于：匿名互评后第 3 轮是否真的更有料、书记员总结是否真的把分歧讲清楚、系统在多模型脏环境下是否稳定。这三件事全部是引擎问题，不是 UI 问题。
+
+先做完整 Web UI 会遇到以下问题：
+1. 前端交互复杂度（四宫格流式、进度条、恢复态、降级态）消耗大量时间
+2. 前后端联调被 SSE 连接管理、Vercel 超时、断线重连等问题拖慢
+3. 引擎 bug 和 prompt 质量问题被埋在 UI 层下面，难以快速定位
+4. 一旦发现引擎层需要调整，前端也要跟着改
+
+CLI 更适合先验证引擎：直接消费事件流，5 分钟跑通完整讨论；输出是结构化数据，可直接做质量评估和回归测试；prompt 迭代周期从"改 prompt → 部署 → 打开浏览器 → 等 SSE"缩短为"改 prompt → 跑一条命令"。
+
+**最终 MVP 仍然是 Web 产品**（本文定义的 Next.js 全栈应用）。CLI 只是引擎验证器和开发工具，必须复用与 Web 完全相同的 core 层代码。
+
+### 2.2 Core / Renderer 分层架构
+
+`runConsensusDiscussion` 通过 `onEvent: (event: SSEEvent) => void` 回调实现 renderer-agnostic。本文将这个隐含的分层显式化为逻辑分层规则，**不要求物理修改 `src/lib/` 目录结构**。
+
+```
+┌──────────────────────────────────────────────────────┐
+│                 Core 层（逻辑边界）                     │
+│  物理位置：src/lib/（不改目录名）                        │
+│  CLI 和 Web 共用，不允许有两套实现                       │
+│                                                       │
+│  lib/orchestrator/consensus.ts   — 3 轮编排主流程      │
+│  lib/orchestrator/stream-hub.ts  — 容错并行流          │
+│  lib/orchestrator/session-starter.ts — 统一启动路径    │
+│  lib/orchestrator/anonymizer.ts                       │
+│  lib/orchestrator/secretary.ts                        │
+│  lib/orchestrator/context-manager.ts                  │
+│  lib/orchestrator/execution-lock.ts                   │
+│  lib/billing/*    lib/security/*    lib/prompt/*      │
+│  lib/openrouter/* lib/db/*          lib/types/*       │
+└─────────────────────┬────────────────────────────────┘
+                      │
+             onEvent(event: SSEEvent)
+                      │
+           ┌──────────┴──────────┐
+           │                     │
+    ┌──────┴──────┐    ┌────────┴────────┐
+    │ CLI Renderer│    │  Web Renderer   │
+    │ src/cli/    │    │  src/app/api/   │
+    │             │    │  + SSE adapter  │
+    └─────────────┘    └─────────────────┘
+```
+
+### 2.3 目录结构
+
+```
+src/
+├── lib/                           # Core 层（沿用原有目录）
+│   ├── orchestrator/
+│   │   ├── consensus.ts
+│   │   ├── session-starter.ts     # 统一启动路径
+│   │   ├── stream-hub.ts
+│   │   ├── anonymizer.ts
+│   │   ├── secretary.ts
+│   │   ├── context-manager.ts
+│   │   ├── execution-lock.ts
+│   │   └── quality-evaluation.ts
+│   ├── billing/
+│   ├── security/
+│   ├── openrouter/
+│   ├── prompt/
+│   ├── db/
+│   ├── types/
+│   └── observability/
+│
+├── cli/                           # CLI Renderer
+│   ├── index.ts                   # CLI 入口（commander）
+│   ├── commands/
+│   │   ├── ask.ts                 # 单模型快问（one-shot）
+│   │   ├── chat.ts                # 会话化单模型（多轮对话）
+│   │   ├── council-run.ts         # 发起议会
+│   │   ├── council-upgrade.ts     # 从单模型会话升级为议会
+│   │   ├── council-replay.ts      # 回放历史
+│   │   ├── council-followup.ts    # 追问
+│   │   └── council-export.ts      # 导出
+│   ├── display.ts                 # 终端事件渲染（chalk + 品牌色）
+│   └── event-logger.ts            # JSONL 事件日志（debug artifact）
+│
+├── app/                           # Web Renderer（Phase B 接入）
+└── ...
+```
+
+### 2.4 分层铁律
+
+1. **`src/lib/` 下的代码不得 import `src/cli/` 或 `src/app/` 下的任何模块**
+2. **`src/cli/` 和 `src/app/` 可以 import `src/lib/`**
+3. **业务逻辑只能写在 `src/lib/`**
+4. **CLI 和 Web 不共享 renderer 代码，但共享所有 core 代码**
+5. **如果某段逻辑同时被 CLI 和 Web 需要，它必须在 `src/lib/`**
+6. **`src/lib/` 中禁止 import NextAuth、读取 cookie、调用 `getServerSession()`。这些只能在 `src/app/` 中做**
+
+### 2.5 事件优先原则（Event-First）
+
+Orchestrator 是 event-driven 的——`onEvent` 回调是唯一的输出通道：
+
+1. **CLI stdout 只是事件流的终端渲染**，不是独立的输出通道
+2. **Web SSE 是同一事件流的网络渲染**
+3. **replay / 测试 / 调试 都消费同一套事件 schema**
+4. **不允许 CLI 直接 `console.log` 不可结构化的信息作为核心输出**
+
+### 2.6 JSONL 事件日志（定位与边界）
+
+每次讨论的完整事件流可同时写入本地 JSONL 文件，用于 debug 和 replay：
+
+```
+.agora/sessions/{discussionId}.events.jsonl
+```
+
+**JSONL 的定位（写死）**：
+1. JSONL 只是 **CLI 阶段的 replay / debug artifact**，不是 canonical state
+2. **Canonical state 以 DB 持久化为准**（conversations + messages + discussion_rounds 表）
+3. JSONL 缺失、损坏或不存在 **不影响生产核心流程**
+4. **生产环境不依赖本地文件系统 replay**
+5. JSONL 主要用途：CLI replay 命令 + Phase B 的 Web UI mock 开发 + prompt 迭代 debug
+6. Phase B/C 中 Web 不读取也不写入 JSONL
+
+---
+
+## 三、技术栈
+
+### 3.1 完整技术栈（最终 MVP）
+
+| 层级 | 选型 | 版本约束 |
+|------|------|---------|
+| 框架 | Next.js 15 (App Router) | `next@^15` |
+| 语言 | TypeScript | strict mode |
+| 样式 | Tailwind CSS + shadcn/ui | — |
+| 数据库 | PostgreSQL (Supabase) | — |
+| ORM | Drizzle ORM | — |
+| 认证 | NextAuth.js v5 (Auth.js) | — |
+| API 网关 | OpenRouter | — |
+| 流式传输 | SSE（后端聚合） | — |
+| 支付 | Stripe `[FUTURE]` | — |
+| 部署 | Vercel + Supabase | — |
+| 国际化 | next-intl | 中英双语 |
+| Schema 校验 | zod | — |
+| 状态管理 | Zustand | — |
+| 监控 | Vercel Analytics | Phase 2 迁移 PostHog |
+
+**不用**：WebSocket、Redis、独立后端、Docker/K8s、Neo4j、微服务。
+
+### 3.2 Phase A（CLI 阶段）最小技术栈
+
+Phase A 只需要以下子集：
+
+| 层级 | 选型 | 说明 |
+|------|------|------|
+| CLI 框架 | commander | 命令解析 |
+| 终端渲染 | chalk | 品牌色 + 基础格式化 |
+| DB | PostgreSQL (Supabase) | 与最终栈相同 |
+| ORM | Drizzle | 与最终栈相同 |
+| API | OpenRouter | 与最终栈相同 |
+| Schema 校验 | zod | 与最终栈相同 |
+| 事件日志 | JSONL 文件 | `.agora/sessions/{id}.events.jsonl`（debug artifact） |
+| 测试 | vitest | 单元 + 集成 |
+| 运行 | tsx | TypeScript 直接执行 |
+
+**Phase A 不引入**：Next.js、React、Tailwind、shadcn、NextAuth。
+
+---
+
+## 四、计费口径定义（全文唯一标准）
+
+| 术语 | 定义 | 计算 |
+|------|------|------|
+| `raw_cost` | 上游 API 原始成本 | `tokens × model_price_per_token` |
+| `platform_price` | 用户侧结算价格 | `raw_cost × OPENROUTER_FEE(1.055) × PLATFORM_MARGIN(1.15)` |
+
+**铁律**：
+1. `estimateRawCost()` 返回 raw_cost。永不在此函数内乘费率。
+2. `raw_cost → platform_price` 只在 `hold()`/`settle()` 中执行一次。
+3. DB 字段：`*_raw` = 上游原价，`*_platform` = 用户结算价。
+4. 历史账单使用 `billing_snapshots` 冻结价格。
+
+**账本语义**：
+- `hold`：真实冻结余额。`amount < 0`, `affects_balance = TRUE`
+- `release`：释放未使用额度。`amount > 0`, `affects_balance = TRUE`
+- `refund`：异常退款。`amount > 0`, `affects_balance = TRUE`
+- `settle`：结算确认记录。`amount = 0`, `affects_balance = FALSE`（不影响余额）
+- `net_charge = abs(hold.amount) - release.amount - refund.amount`
+
+**退款业务规则**：
+- `failed`：按已消耗结算，未消耗退款
+- `aborted` 未开始执行：全额退款
+- `aborted` 已开始执行：按已消耗结算，未消耗退款
+
+---
+
+## 五、状态机
+
+### 5.1 Discussion 持久状态（白名单迁移）
+
+```
+created → streaming → summarizing → completed（终态）
+                                  → failed（终态）
+       → aborted（终态）
+       → failed（终态）
+streaming → failed（终态）
+          → aborted（终态）
+summarizing → failed（终态）
+```
+
+| From | To | Trigger | 写入字段 |
+|------|----|---------|---------|
+| created | streaming | 首次连接 + 执行锁成功（通过 session-starter） | execution_started_at |
+| created | aborted | 120s 无连接 / 用户取消 | aborted_at |
+| created | failed | 系统异常 | failed_at, error_code, error_message |
+| streaming | streaming | 新一轮开始 | current_round++ |
+| streaming | summarizing | 最后一轮完成 | — |
+| streaming | failed | 轮次失败 / 系统异常 | failed_at, error_code, error_message |
+| streaming | aborted | 用户取消 | aborted_at |
+| summarizing | completed | 书记员成功（含降级）| completed_at |
+| summarizing | failed | 书记员+降级均失败 | failed_at, error_code, error_message |
+
+**终态保护**：completed/failed/aborted 不允许迁移到任何状态。所有状态更新必须 CAS：
+```sql
+UPDATE conversations SET status=$2, failed_at=$3 WHERE id=$1 AND status IN ('created','streaming','summarizing');
+```
+
+**round_done 不是持久状态**，只是 SSE 事件。
+
+### 5.2 字段定义
+
+| 字段 | 含义 | 取值 |
+|------|------|------|
+| `current_round` | 正在执行/即将进入的轮次 | 0=未开始, 1/2/3 |
+| `last_completed_round` | 已持久化完成的最后轮次 | 0=未开始, 1/2/3=轮次, 4=summary 完成 |
+
+streaming 阶段 `current_round` 可能 > `last_completed_round`。前端进度条用 `last_completed_round` 确定已完成进度。
+
+### 5.3 执行锁
+
+- `POST /discussions` 只创建记录（幂等：同 `idempotency_key` 返回已有）
+- 首次有效连接通过 `session-starter` 尝试获取执行锁
+- 锁获取 = CAS 更新 `execution_lock_token WHERE status='created'`
+- 锁失败 = 降级为状态恢复模式（`can_stream: false`）
+
+**attempt 递增规则**：只有成功获取锁并开始 orchestration 才创建 `discussion_executions` 记录。恢复连接、polling、锁获取失败均不创建。
+
+---
+
+## 六、数据库（完整 Schema，可直接写 Migration）
+
+### Migration 顺序
+1. billing_snapshots
+2. users
+3. conversations（依赖 users, billing_snapshots）
+4. messages（依赖 conversations, prompt_templates）
+5. prompt_templates
+6. discussion_rounds（依赖 conversations）
+7. discussion_executions（依赖 conversations）
+8. discussion_anonymization_maps（依赖 conversations）
+9. credit_transactions（依赖 users, conversations, billing_snapshots）
+10. byok_keys（依赖 users）
+11. events（依赖 users）
+
+### 枚举值集合
+
+```typescript
+// conversations.status
+type ConversationStatus = 'created' | 'streaming' | 'summarizing' | 'completed' | 'failed' | 'aborted';
+
+// conversations.type
+type ConversationType = 'chat' | 'council';
+
+// conversations.mode
+type DiscussionMode = 'consensus'; // MVP 只有 consensus
+
+// conversations.visibility
+type Visibility = 'private' | 'public' | 'team';
+
+// conversations.risk_level
+type RiskLevel = 'normal' | 'sensitive' | 'high_risk';
+
+// messages.role
+type MessageRole = 'user' | 'assistant' | 'secretary' | 'system';
+
+// messages.status
+type MessageStatus = 'streaming' | 'completed' | 'partial' | 'error' | 'skipped' | 'timeout';
+
+// messages.finish_reason
+type FinishReason = 'stop' | 'length' | 'timeout' | 'error' | 'filtered' | 'unknown';
+
+// messages.error_type
+type ModelErrorType = 'timeout' | 'rate_limited' | 'server_error' | 'stream_interrupted' | 'output_filtered';
+
+// credit_transactions.type
+type CreditTransactionType = 'hold' | 'settle' | 'release' | 'refund' | 'grant' | 'purchase' | 'monthly_reset';
+
+// discussion_rounds.status
+type RoundStatus = 'completed' | 'partial' | 'failed';
+
+// discussion_executions.status
+type ExecutionStatus = 'started' | 'completed' | 'failed' | 'timeout';
+```
+
+### 6.1 billing_snapshots
+
+```sql
+CREATE TABLE billing_snapshots (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  version         TEXT NOT NULL,              -- "2026-Q1-v1"
+  pricing_data    JSONB NOT NULL,             -- 完整模型定价表快照（见 Seed Data）
+  openrouter_fee  DECIMAL(6,4) NOT NULL,      -- 1.055
+  platform_margin DECIMAL(6,4) NOT NULL,      -- 1.15
+  effective_from  TIMESTAMPTZ NOT NULL,
+  effective_to    TIMESTAMPTZ,                -- null = 当前生效
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Seed Data**:
+```sql
+INSERT INTO billing_snapshots (id, version, pricing_data, openrouter_fee, platform_margin, effective_from) VALUES (
+  'bs-2026q1-v1',
+  '2026-Q1-v1',
+  '{
+    "anthropic/claude-opus-4.6":   {"input": 5.00, "output": 25.00},
+    "anthropic/claude-sonnet-4.6": {"input": 3.00, "output": 15.00},
+    "anthropic/claude-haiku-4.5":  {"input": 1.00, "output": 5.00},
+    "openai/gpt-5.4":             {"input": 2.50, "output": 15.00},
+    "openai/gpt-5.2":             {"input": 1.75, "output": 14.00},
+    "openai/gpt-5-mini":          {"input": 0.25, "output": 2.00},
+    "google/gemini-3.1-pro":      {"input": 2.00, "output": 12.00},
+    "google/gemini-3-flash":      {"input": 0.50, "output": 3.00},
+    "deepseek/deepseek-chat":     {"input": 0.28, "output": 0.42},
+    "x-ai/grok-4.1":             {"input": 0.20, "output": 0.50}
+  }',
+  1.055,
+  1.15,
+  '2026-01-01T00:00:00Z'
+);
+```
+
+### 6.2 users
+
+```sql
+CREATE TABLE users (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email           TEXT UNIQUE NOT NULL,
+  name            TEXT,
+  avatar_url      TEXT,
+  auth_provider   TEXT NOT NULL DEFAULT 'google',
+  auth_id         TEXT,
+  plan            TEXT NOT NULL DEFAULT 'free',
+  credits_balance DECIMAL(10,4) DEFAULT 0,
+  credits_monthly DECIMAL(10,4) DEFAULT 0,
+  free_frontier_remaining INT DEFAULT 3,
+  free_budget_remaining   INT DEFAULT 5,
+  trial_ends_at   TIMESTAMPTZ,
+  stripe_customer_id TEXT,
+  locale          TEXT DEFAULT 'en',
+  default_model   TEXT DEFAULT 'openai/gpt-5-mini',
+  twitter_handle  TEXT,
+  twitter_avatar  TEXT,
+  referral_code   TEXT UNIQUE,
+  referred_by     UUID REFERENCES users(id),
+  referral_rewards_earned INT DEFAULT 0,
+  team_id         UUID,
+  role_in_team    TEXT,
+  is_banned       BOOLEAN DEFAULT FALSE,
+  ban_reason      TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  last_active_at  TIMESTAMPTZ
+);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_plan ON users(plan);
+```
+
+### 6.3 conversations
+
+```sql
+CREATE TABLE conversations (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type            TEXT NOT NULL DEFAULT 'chat',
+  mode            TEXT DEFAULT 'consensus',
+  status          TEXT NOT NULL DEFAULT 'created',
+  current_round   INT DEFAULT 0,
+  last_completed_round INT DEFAULT 0,
+  idempotency_key       TEXT,
+  execution_lock_token  TEXT,
+  execution_lock_at     TIMESTAMPTZ,
+  execution_started_at  TIMESTAMPTZ,
+  abort_requested_at    TIMESTAMPTZ,
+  completed_at    TIMESTAMPTZ,
+  failed_at       TIMESTAMPTZ,
+  aborted_at      TIMESTAMPTZ,
+  error_code      TEXT,
+  error_message   TEXT,
+  models          JSONB,
+  max_rounds      INT DEFAULT 3,
+  title           TEXT,
+  topic           TEXT,
+  topic_hash      TEXT,
+  summary         JSONB,
+  estimated_raw_cost    DECIMAL(10,6) DEFAULT 0,
+  held_platform_amount  DECIMAL(10,6) DEFAULT 0,
+  total_raw_cost        DECIMAL(10,6) DEFAULT 0,
+  total_platform_price  DECIMAL(10,6) DEFAULT 0,
+  total_input_tokens    INT DEFAULT 0,
+  total_output_tokens   INT DEFAULT 0,
+  billing_snapshot_id   UUID REFERENCES billing_snapshots(id),
+  visibility      TEXT DEFAULT 'private',
+  share_slug      TEXT UNIQUE,
+  risk_level      TEXT DEFAULT 'normal',
+  parent_id       UUID REFERENCES conversations(id),
+  fork_point_message_id UUID,
+  fork_instruction TEXT,
+  team_id         UUID,
+  quality_score   JSONB,
+  user_rating     INT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT uq_conv_idempotency UNIQUE (user_id, idempotency_key)
+);
+CREATE INDEX idx_conv_user ON conversations(user_id);
+CREATE INDEX idx_conv_status ON conversations(status);
+CREATE INDEX idx_conv_visibility ON conversations(visibility) WHERE visibility = 'public';
+CREATE INDEX idx_conv_created ON conversations(created_at DESC);
+CREATE INDEX idx_conv_share ON conversations(share_slug) WHERE share_slug IS NOT NULL;
+CREATE INDEX idx_conv_user_topic_hash ON conversations(user_id, topic_hash, created_at DESC);
+```
+
+**JSONB 字段内部结构**：
+
+`conversations.summary` → `DiscussionSummaryFinal`:
+```typescript
+{
+  consensus: { content: string; supporting_models: string[]; evidence_refs: string[] }[];
+  disagreements: { topic: string; type: string; positions: { model_id: string; stance: string; summary: string }[]; severity: string }[];
+  recommendation: string;
+  confidence: 'high' | 'medium' | 'low';
+  open_questions: string[];
+  decision_boundary?: string;
+  evidence_refs: string[];
+  disclaimer: string;
+  is_degraded: boolean;
+}
+```
+
+`conversations.models` → `string[]`:
+```json
+["anthropic/claude-sonnet-4.6", "openai/gpt-5.2", "google/gemini-3.1-pro", "deepseek/deepseek-chat"]
+```
+
+### 6.4 messages
+
+```sql
+CREATE TABLE messages (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  role            TEXT NOT NULL,
+  logical_model_id TEXT,
+  actual_model_id  TEXT,
+  round           INT,
+  anonymous_label TEXT,
+  content         TEXT NOT NULL,
+  input_tokens    INT,
+  output_tokens   INT,
+  raw_cost        DECIMAL(10,6),
+  status          TEXT DEFAULT 'completed',
+  error_type      TEXT,
+  error_message   TEXT,
+  model_call_trace_id TEXT,
+  round_trace_id      TEXT,
+  latency_ms      INT,
+  ttft_ms         INT,
+  finish_reason   TEXT,
+  prompt_version_id UUID REFERENCES prompt_templates(id),
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  reaction        TEXT,
+  is_fork_point   BOOLEAN DEFAULT FALSE
+);
+CREATE INDEX idx_msg_conv ON messages(conversation_id);
+CREATE INDEX idx_msg_conv_round ON messages(conversation_id, round);
+```
+
+### 6.5 discussion_rounds
+
+```sql
+CREATE TABLE discussion_rounds (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  round           INT NOT NULL,
+  status          TEXT NOT NULL,
+  completed_models JSONB NOT NULL DEFAULT '[]',
+  skipped_models   JSONB NOT NULL DEFAULT '[]',
+  failed_models    JSONB NOT NULL DEFAULT '[]',
+  total_models     INT NOT NULL,
+  compressed_state JSONB,
+  round_raw_cost       DECIMAL(10,6) DEFAULT 0,
+  round_input_tokens   INT DEFAULT 0,
+  round_output_tokens  INT DEFAULT 0,
+  round_trace_id  TEXT NOT NULL,
+  started_at      TIMESTAMPTZ DEFAULT NOW(),
+  completed_at    TIMESTAMPTZ,
+  duration_ms     INT,
+  CONSTRAINT uq_round UNIQUE (conversation_id, round)
+);
+```
+
+**JSONB 字段结构**：
+
+`failed_models` → `ModelFailureRecord[]`:
+```typescript
+{ logical_model_id: string; actual_model_id: string | null; error_type: string; action: 'retrying' | 'degraded' | 'skipped' }
+```
+
+`compressed_state` → `CompressedRoundState`:
+```typescript
+{
+  round: number;
+  model_positions: {
+    logical_model_id: string;
+    core_stance: string;        // ≤50 字
+    key_evidence: string[];
+    challenged_by: string[];
+    conceded_points: string[];
+  }[];
+  unresolved_conflicts: string[];
+  new_information: string[];
+  must_answer_in_next_round: string[];
+}
+```
+
+### 6.6 discussion_executions
+
+```sql
+CREATE TABLE discussion_executions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id),
+  attempt         INT NOT NULL DEFAULT 1,
+  lock_token      TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  error_message   TEXT,
+  serverless_instance_id TEXT,
+  started_at      TIMESTAMPTZ DEFAULT NOW(),
+  completed_at    TIMESTAMPTZ,
+  duration_ms     INT,
+  CONSTRAINT uq_execution UNIQUE (conversation_id, attempt)
+);
+```
+
+### 6.7 discussion_anonymization_maps
+
+```sql
+CREATE TABLE discussion_anonymization_maps (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  round           INT NOT NULL,
+  label           TEXT NOT NULL,
+  logical_model_id TEXT NOT NULL,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT uq_anon_map UNIQUE (conversation_id, round, label)
+);
+```
+
+### 6.8 prompt_templates
+
+```sql
+CREATE TABLE prompt_templates (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  version         TEXT NOT NULL,
+  model           TEXT NOT NULL DEFAULT 'all',
+  mode            TEXT NOT NULL DEFAULT 'all',
+  role            TEXT NOT NULL DEFAULT 'all',
+  round_type      TEXT NOT NULL DEFAULT 'all',
+  content         TEXT NOT NULL,
+  is_active       BOOLEAN DEFAULT FALSE,
+  ab_group        TEXT,
+  ab_traffic_pct  INT DEFAULT 100,
+  usage_count     INT DEFAULT 0,
+  avg_quality     JSONB,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  created_by      TEXT DEFAULT 'system',
+  notes           TEXT
+);
+CREATE UNIQUE INDEX idx_prompt_active ON prompt_templates(model, mode, role, round_type)
+  WHERE is_active = TRUE AND ab_group IS NULL;
+```
+
+### 6.9 credit_transactions
+
+```sql
+CREATE TABLE credit_transactions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id),
+  type            TEXT NOT NULL,
+  amount          DECIMAL(10,4) NOT NULL,
+  affects_balance BOOLEAN NOT NULL DEFAULT TRUE,
+  balance_after   DECIMAL(10,4) NOT NULL,
+  raw_cost_ref    DECIMAL(10,6),
+  conversation_id UUID REFERENCES conversations(id),
+  description     TEXT,
+  stripe_payment_id TEXT,
+  idempotency_key TEXT UNIQUE,
+  billing_snapshot_id UUID REFERENCES billing_snapshots(id),
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_credit_user ON credit_transactions(user_id);
+CREATE INDEX idx_credit_created ON credit_transactions(created_at DESC);
+```
+
+### 6.10 byok_keys
+
+```sql
+CREATE TABLE byok_keys (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider        TEXT NOT NULL,
+  encrypted_key   TEXT NOT NULL,
+  key_hint        TEXT,
+  is_valid        BOOLEAN DEFAULT TRUE,
+  last_validated_at TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_byok_user ON byok_keys(user_id);
+```
+
+### 6.11 events
+
+```sql
+CREATE TABLE events (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID REFERENCES users(id),
+  event_name      TEXT NOT NULL,
+  properties      JSONB DEFAULT '{}',
+  device_fingerprint TEXT,
+  ip_address      TEXT,
+  user_agent      TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_events_name ON events(event_name);
+CREATE INDEX idx_events_user ON events(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX idx_events_created ON events(created_at DESC);
+```
+
+### Seed Data（除 billing_snapshots 外）
+
+```sql
+-- 默认 Prompt（见第十三章 Prompt 冻结包）
+-- 插入时 is_active = TRUE, version = '1.0.0'
+-- 每个 round_type 至少一条 active prompt
+
+-- 管理员用户（可选）
+-- 通过 ADMIN_EMAIL 环境变量鉴权，不需要单独 seed
+```
+
+---
+
+## 七、Summary 命名规范（官方定义，全文唯一）
+
+本节是 Summary 相关命名的唯一真相源。全文所有章节、代码、类型、schema、API 返回、SSE 事件、DB 字段必须遵守本节定义。
+
+### 官方命名表
+
+| 名称 | 角色 | 语言层 | 用途 |
+|------|------|--------|------|
+| `SecretaryRawOutput` | TypeScript interface | 类型标注 | 描述模型原始返回的结构化 JSON |
+| `SecretaryRawOutputSchema` | zod schema (`z.object(...)`) | 运行时校验 | 校验模型输出 JSON 是否合法 |
+| `DiscussionSummaryFinal` | TypeScript interface | 类型标注 | 系统最终产物（存库 + 前端 + SSE + API + restore）|
+
+### 处理管线（唯一路径）
+
+```
+callSecretary() 返回 string
+  → JSON.parse()
+  → SecretaryRawOutputSchema.parse()    // zod 运行时校验
+  → 得到 SecretaryRawOutput              // TypeScript 类型
+  → validateSemantics()                   // 语义校验
+  → 系统补充 disclaimer + is_degraded    // 系统字段
+  → DiscussionSummaryFinal               // 最终消费类型
+```
+
+### 铁律
+
+1. **`SecretaryRawOutputSchema` 只能用作 zod schema**。不得写 `x: SecretaryRawOutputSchema`。
+2. **`SecretaryRawOutput` 只能用作 TypeScript 类型标注**。不得将其用作 zod schema。
+3. **`DiscussionSummaryFinal` 是唯一的最终消费类型**。以下位置统一使用该类型：
+   - `conversations.summary` JSONB 字段
+   - SSE `summary` 事件 payload
+   - SSE `restore` 事件的 `summary` 字段
+   - `GET /api/discussions/:id` 返回的 summary
+   - 管理后台读取的 summary
+4. **以下旧名已废弃，不得在任何地方出现**：`SummarySchema`、`SecretaryRawSchema`。
+
+---
+
+## 八、类型定义（前后端共享，唯一规格源）
+
+```typescript
+// src/lib/types/index.ts — 所有类型从此文件导出
+
+// ═══ 调用者上下文 ═══
+export interface ActorContext {
+  userId: string;
+  source: 'cli' | 'web' | 'test';
+}
+
+// ═══ Summary 契约分层 ═══
+
+export interface SecretaryRawOutput {
+  consensus: ConsensusPoint[];
+  disagreements: DisagreementPoint[];
+  recommendation: string;
+  confidence: 'high' | 'medium' | 'low';
+  open_questions: string[];
+  decision_boundary?: string;
+  evidence_refs: string[];
+}
+
+export interface DiscussionSummaryFinal {
+  consensus: ConsensusPoint[];
+  disagreements: DisagreementPoint[];
+  recommendation: string;
+  confidence: 'high' | 'medium' | 'low';
+  open_questions: string[];
+  decision_boundary?: string;
+  evidence_refs: string[];
+  disclaimer: string;
+  is_degraded: boolean;
+}
+
+export interface ConsensusPoint {
+  content: string;
+  supporting_models: string[];
+  evidence_refs: string[];
+}
+
+export interface DisagreementPoint {
+  topic: string;
+  type: 'fact_conflict' | 'context_gap' | 'logic_divergence' | 'preference_difference';
+  positions: DisagreementPosition[];
+  severity: 'high' | 'medium' | 'low';
+}
+
+export interface DisagreementPosition {
+  model_id: string;
+  stance: 'for' | 'against' | 'neutral';
+  summary: string;
+}
+
+export interface CompressedRoundState {
+  round: number;
+  model_positions: {
+    logical_model_id: string;
+    core_stance: string;
+    key_evidence: string[];
+    challenged_by: string[];
+    conceded_points: string[];
+  }[];
+  unresolved_conflicts: string[];
+  new_information: string[];
+  must_answer_in_next_round: string[];
+}
+
+export interface ModelFailureRecord {
+  logical_model_id: string;
+  actual_model_id: string | null;
+  error_type: string;
+  action: 'retrying' | 'degraded' | 'skipped';
+}
+
+// ═══ SSE 事件类型 ═══
+export interface SSEProgressEvent {
+  round: number; total_rounds: number; phase: string; seq: number;
+}
+
+export interface SSEChunkEvent {
+  logical_model_id: string; actual_model_id: string;
+  round: number; content: string; done: boolean; seq: number;
+}
+
+export interface SSEModelDoneEvent {
+  logical_model_id: string; actual_model_id: string;
+  round: number; tokens: { input: number; output: number }; seq: number;
+}
+
+export interface SSEModelErrorEvent {
+  logical_model_id: string; actual_model_id: string | null;
+  round: number; error_type: string;
+  action: 'skipped' | 'retrying' | 'degraded';
+  degraded_to: string | null; message: string; seq: number;
+}
+
+export interface SSERoundDoneEvent {
+  round: number;
+  completed_models: string[];
+  skipped_models: string[];
+  failed_models: ModelFailureRecord[];
+  total_models: number; seq: number;
+}
+
+export interface SSEAnonymizeEvent {
+  round: number; labels: string[]; seq: number;
+}
+
+export interface SSESummaryEvent extends DiscussionSummaryFinal {
+  seq: number;
+}
+
+export interface SSEDoneEvent {
+  total_raw_cost: number; total_platform_price: number; seq: number;
+}
+
+export interface SSERestoreEvent {
+  resume_mode: 'state_restore';
+  can_stream: boolean;
+  current_status: ConversationStatus;
+  current_round: number;
+  last_completed_round: number;
+  completed_round_messages: Message[];
+  summary: DiscussionSummaryFinal | null;
+  error_code?: string;
+  error_message?: string;
+}
+
+export interface SSEInterruptAckEvent {
+  status: 'acknowledged'; message: string; seq: number;
+}
+
+export interface SSEErrorEvent {
+  code: string; message: string;
+}
+
+// ═══ API 请求/响应类型 ═══
+export interface CreateDiscussionRequest {
+  topic: string;
+  models?: string[];
+  mode?: 'consensus';
+  max_rounds?: 3;
+  idempotency_key: string;
+}
+
+export interface CreateDiscussionResponse {
+  id: string;
+  status: 'created';
+  estimated_raw_cost: number;
+  held_platform_amount: number;
+  stream_url: string;
+}
+
+export interface InterruptRequest {
+  content: string;
+  target: 'broadcast' | 'targeted';
+  target_model_id?: string;
+}
+
+export interface FollowupRequest {
+  mode: 'ask_secretary' | 'ask_model' | 'new_council';
+  content: string;
+  model_id?: string;
+}
+
+export interface ShareResponse {
+  share_url: string;
+  slug: string;
+}
+
+export interface RateRequest {
+  rating: 1 | -1;
+  tags?: string[];
+}
+
+export interface UserProfile {
+  id: string; email: string; name: string; avatar_url: string;
+  plan: string; credits_balance: number; credits_monthly: number;
+  free_frontier_remaining: number; free_budget_remaining: number;
+  locale: string; default_model: string; twitter_handle: string;
+  referral_code: string; created_at: string;
+}
+
+export interface UpdatePreferencesRequest {
+  default_model?: string;
+  locale?: 'en' | 'zh';
+  name?: string;
+}
+
+export interface ConversationListItem {
+  id: string; type: string; mode: string; title: string; status: string;
+  models: string[]; visibility: string; total_platform_price: number;
+  user_rating: number; created_at: string; updated_at: string;
+}
+
+export interface DiscussionDetail {
+  discussion: Conversation;
+  messages: Message[];
+}
+
+export interface ExploreItem {
+  id: string; title: string; topic: string; mode: string;
+  models: string[]; summary: DiscussionSummaryFinal;
+  share_slug: string; user_rating: number; created_at: string;
+  user_name: string; user_avatar: string; twitter_handle: string;
+}
+
+export interface ApiErrorResponse {
+  error: { code: string; message: string; details?: Record<string, any> };
+}
+```
+
+---
+
+## 九、API Contract（完整规格）
+
+### 9.1 `POST /api/discussions` — 创建议会讨论
+
+| 项目 | 值 |
+|------|---|
+| 方法 | POST |
+| 认证 | 必须登录 |
+| 幂等 | 是。同一 `(user_id, idempotency_key)` 返回已有记录 |
+| 请求体 | `CreateDiscussionRequest` |
+| 成功响应 | `201 CreateDiscussionResponse` |
+| 副作用 | 创建 conversations 记录 + hold 积分 + 写 billing_snapshot_id |
+| 状态变化 | 无（status 保持 created，执行在连接时才开始）|
+
+**错误码**：
+| 码 | HTTP | 条件 |
+|---|---:|------|
+| INVALID_INPUT | 400 | topic 为空/过长/topic_hash 重复 |
+| MAX_MODELS_EXCEEDED | 400 | 超过 plan 模型数上限 |
+| MODEL_NOT_ALLOWED | 403 | Free 用户使用前沿模型 |
+| INSUFFICIENT_CREDITS | 402 | 积分不足以预占 |
+| RATE_LIMITED | 429 | 超过日讨论上限 / IP 上限 |
+| INJECTION_DETECTED | 400 | topic 含注入 pattern |
+
+### 9.2 `GET /api/discussions/:id/stream` — SSE 流 + 执行启动/恢复
+
+| 项目 | 值 |
+|------|---|
+| 方法 | GET |
+| 认证 | 必须登录（本人或 public 讨论）|
+| Content-Type | text/event-stream |
+| 幂等 | 多次连接安全（锁机制保护）|
+| 副作用 | 首次持锁连接通过 session-starter 启动 orchestrator；后续连接返回 restore |
+| 状态变化 | created→streaming（首次连接）|
+
+**行为规则**（通过 `session-starter` 统一实现）：
+1. status=created → 尝试获取锁 → 成功则启动 orchestrator → 推送实时事件
+2. status=created → 锁失败 → 返回 restore(can_stream=false) → 关闭连接
+3. status=streaming/summarizing → 持锁 → 返回 restore(can_stream=true) + 继续推送
+4. status=streaming/summarizing → 不持锁 → 返回 restore(can_stream=false) → 关闭连接
+5. status=completed → 返回 restore + done → 关闭
+6. status=failed/aborted → 返回 restore(error) → 关闭
+
+**Web 实现**：
+```typescript
+// src/app/api/discussions/[id]/stream/route.ts
+export async function GET(req, { params }) {
+  // 1. 从 Web auth 上下文解析 session（NextAuth 只在 app/ 层调用）
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return Response.json({ error: { code: 'UNAUTHORIZED', message: '请先登录' } }, { status: 401 });
+  }
+  // 2. 显式构造 ActorContext
+  const actor: ActorContext = { userId: session.user.id, source: 'web' };
+  // 3. 通过统一启动路径
+  const { role, discussion } = await startOrAttachDiscussion({
+    actor,
+    discussionId: params.id,
+    onEvent: (event) => { /* SSE 推送 */ },
+  });
+  if (role === 'owner') {
+    return sseStream(/* ... */);
+  } else {
+    return restoreResponse(discussion);
+  }
+}
+```
+
+**铁律**：
+- `GET /api/discussions/:id/stream` 不得直接调用 `runConsensusDiscussion`
+- `cli/commands/council-run.ts` 不得直接调用 `runConsensusDiscussion`
+- 两者都通过 `session-starter.ts` 走统一启动路径
+
+### 9.3 `GET /api/discussions/:id` — 讨论详情
+
+| 项目 | 值 |
+|------|---|
+| 方法 | GET |
+| 认证 | 本人或 public |
+| 请求体 | 无 |
+| 成功响应 | `200 DiscussionDetail` |
+| 用途 | polling 恢复 + 详情页加载 |
+
+**错误码**：NOT_FOUND(404), FORBIDDEN(403)
+
+### 9.4 `POST /api/discussions/:id/interrupt` — 用户插话
+
+| 项目 | 值 |
+|------|---|
+| 方法 | POST |
+| 认证 | 本人 |
+| 请求体 | `InterruptRequest` |
+| 成功响应 | `200 { status: 'acknowledged', message: '...' }` |
+| 副作用 | 写入 messages(round=null) + 下一轮注入 |
+| 状态变化 | 无 |
+
+**铁律**：不中止已发上游请求。下一轮生效。targeted 只影响下一轮指定模型 prompt。匿名互评轮中不暴露目标模型身份。
+
+### 9.5 `POST /api/discussions/:id/followup` — 讨论后追问
+
+| 项目 | 值 |
+|------|---|
+| 方法 | POST |
+| 认证 | 本人 |
+| 请求体 | `FollowupRequest` |
+| 成功响应 | SSE 流式响应 |
+| 前提 | discussion status=completed |
+
+**mode 行为**：
+- `ask_secretary`：GPT-5 mini + summary 上下文
+- `ask_model`：指定模型 + summary 上下文。`model_id` 必填
+- `new_council`：创建新议会（topic=content）
+
+### 9.6 `POST /api/discussions/:id/share` — 分享到广场
+
+| 项目 | 值 |
+|------|---|
+| 方法 | POST |
+| 认证 | 本人 |
+| 成功响应 | `200 ShareResponse` |
+| 副作用 | 生成 nanoid(6) slug + visibility→public |
+| 前提 | status=completed |
+
+### 9.7 `PUT /api/discussions/:id/rate` — 用户评分
+
+| 项目 | 值 |
+|------|---|
+| 方法 | PUT |
+| 认证 | 本人 |
+| 请求体 | `RateRequest` |
+| 成功响应 | `200 { ok: true }` |
+| 副作用 | 更新 user_rating + 写 events(summary_negative_feedback) |
+
+### 9.8 `GET /api/explore` — 辩论广场
+
+| 项目 | 值 |
+|------|---|
+| 方法 | GET |
+| 认证 | 无需 |
+| 查询参数 | `page(1)`, `limit(20)`, `sort(recent/popular)` |
+| 成功响应 | `200 { items: ExploreItem[], total, page, limit }` |
+
+### 9.9 `GET /api/user/profile` — 用户信息
+
+| 项目 | 值 |
+|------|---|
+| 方法 | GET |
+| 认证 | 必须登录 |
+| 成功响应 | `200 UserProfile` |
+
+### 9.10 `PUT /api/user/preferences` — 更新偏好
+
+| 项目 | 值 |
+|------|---|
+| 方法 | PUT |
+| 认证 | 必须登录 |
+| 请求体 | `UpdatePreferencesRequest` |
+| 白名单字段 | default_model, locale, name |
+
+### 9.11 `GET /api/user/conversations` — 对话历史
+
+| 项目 | 值 |
+|------|---|
+| 方法 | GET |
+| 认证 | 必须登录 |
+| 查询参数 | `page(1)`, `limit(20)`, `type(chat/council/null)` |
+| 成功响应 | `200 { items: ConversationListItem[], total, page, limit }` |
+
+### 9.12 管理后台 API
+
+| 端点 | 方法 | 认证 | 用途 |
+|------|------|------|------|
+| `/api/admin/health` | GET | admin | 系统健康 |
+| `/api/admin/models` | GET | admin | 模型状态 |
+| `/api/admin/costs` | GET | admin | 成本看板 |
+| `/api/admin/security` | GET | admin | 安全看板 |
+| `/api/admin/prompts` | GET | admin | Prompt 列表 |
+| `/api/admin/prompts/:id` | PUT | admin | 更新/激活 Prompt |
+| `/api/admin/discussions` | GET | admin | 讨论列表（含质量分、错误统计）|
+
+---
+
+## 十、SSE 事件协议（完整规格）
+
+所有事件均通过 `GET /api/discussions/:id/stream`（Web）或 `onEvent` 回调（CLI）推送。每个事件带 `seq` 序号。CLI 和 Web 消费同一套事件 schema，无任何差异。
+
+### CLI 事件渲染映射
+
+CLI renderer（`cli/display.ts`）接收 `onEvent` 回调推送的事件，按以下规则渲染到终端：
+
+| 事件 | CLI 渲染行为 |
+|------|-------------|
+| `progress` | `[Round N/3] 阶段名...` |
+| `chunk` | 实时追加模型输出文本（品牌色，`logical_model_id` 标签） |
+| `model_done` | `✅ [Claude] 完成 (420 tokens)` |
+| `model_error` | `⏰ [DeepSeek] 超时跳过` / `🔄 [Claude] 重试中` / `⚠️ [Claude] 降级为 Haiku` |
+| `round_done` | `── Round N 完成 (3/4 模型参与) ──` |
+| `anonymize` | `🎭 匿名互评开始 [选手A, 选手B, ...]` |
+| `summary` | 结构化渲染共识/分歧/建议（`is_degraded` 时标注降级） |
+| `done` | `✅ 讨论完成 | raw: $0.082 | platform: $0.0995` |
+| `error` | `❌ 讨论失败: {message}` |
+| `restore` | `♻️ 恢复到 Round {last_completed_round}` |
+| `interrupt_ack` | `📝 插话已记录，将在下一阶段纳入` |
+
+### 10.1 `progress`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| round | number | 当前轮次 |
+| total_rounds | number | 3 |
+| phase | string | independent/anonymous_review/rebuttal/secretary_summary/time_limit_approaching |
+| seq | number | 事件序号 |
+
+**触发**：每轮开始、书记员开始、Vercel 超时接近时。
+**前端**：更新进度条 + 阶段文字。
+
+### 10.2 `chunk`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| logical_model_id | string | 用户选择的模型 |
+| actual_model_id | string | 实际调用的模型（未降级时=logical）|
+| round | number | 轮次 |
+| content | string | 增量文本 |
+| done | boolean | 该模型本轮是否输出完毕 |
+| seq | number | 事件序号 |
+
+**触发**：模型每输出一个 token 片段。
+**前端**：追加到对应模型面板。用 `logical_model_id` 定位面板，用品牌色渲染。
+
+### 10.3 `model_done`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| logical_model_id | string | |
+| actual_model_id | string | |
+| round | number | |
+| tokens | { input, output } | |
+| seq | number | |
+
+**触发**：单个模型完成本轮输出。
+**前端**：标记该模型本轮完成，显示 token 统计。
+
+### 10.4 `model_error`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| logical_model_id | string | |
+| actual_model_id | string \| null | 降级后的实际模型；未发起调用则 null |
+| round | number | |
+| error_type | string | timeout/rate_limited/server_error/stream_interrupted/output_filtered |
+| action | string | retrying/degraded/skipped |
+| degraded_to | string \| null | 降级目标模型 |
+| message | string | 用户可见提示 |
+| seq | number | |
+
+**触发时机**：
+- 首次失败准备重试 → `action='retrying'`
+- 切换到降级模型 → `action='degraded'`
+- 所有重试/降级均失败 → `action='skipped'`
+
+**前端**：显示对应提示（"⏰ 超时"/"🔄 重试中"/"⚠️ 降级为 Haiku"/"❌ 本轮跳过"）。
+
+### 10.5 `round_done`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| round | number | |
+| completed_models | string[] | 成功完成的逻辑模型 ID |
+| skipped_models | string[] | 最终跳过的逻辑模型 ID |
+| failed_models | ModelFailureRecord[] | 结构化错误对象 |
+| total_models | number | |
+| seq | number | |
+
+**触发**：一轮所有模型完成/超时/跳过后。
+**前端**：更新进度条，切换到下一轮视图。
+
+**示例（含降级+超时）**：
+```json
+{
+  "round": 1,
+  "completed_models": ["anthropic/claude-sonnet-4.6", "openai/gpt-5.2"],
+  "skipped_models": ["google/gemini-3.1-pro"],
+  "failed_models": [
+    {"logical_model_id": "deepseek/deepseek-chat", "actual_model_id": null, "error_type": "timeout", "action": "skipped"},
+    {"logical_model_id": "google/gemini-3.1-pro", "actual_model_id": "google/gemini-3-flash", "error_type": "server_error", "action": "degraded"}
+  ],
+  "total_models": 4,
+  "seq": 15
+}
+```
+
+### 10.6 `anonymize`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| round | number | 2 |
+| labels | string[] | ["选手A","选手B",...] |
+| seq | number | |
+
+**前端**：显示匿名标签。**不含真实映射**。
+
+### 10.7 `summary`
+
+字段 = `DiscussionSummaryFinal` + `seq`。
+
+**触发**：书记员总结完成。
+**前端**：渲染总结卡片 + 分歧矩阵。`is_degraded=true` 时显示降级提示。
+
+### 10.8 `done`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| total_raw_cost | number | |
+| total_platform_price | number | |
+| seq | number | |
+
+**前端**：关闭 SSE 连接。显示成本。切换到 followup 状态。
+
+### 10.9 `restore`
+
+字段 = `SSERestoreEvent`（见类型定义）。
+
+**触发**：连接建立时，discussion 已有进度。
+**前端**：
+- 不重放历史 chunk 动画
+- 直接渲染已完成消息（静态）
+- 显示"已恢复到最近保存阶段"
+- `can_stream=true` → 继续监听
+- `can_stream=false` → 关闭 SSE，切换 polling（每 3 秒查状态，最长 180 秒）
+
+### 10.10 `error`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| code | string | DISCUSSION_FAILED/... |
+| message | string | |
+
+**前端**：显示错误信息。关闭 SSE。
+
+### 10.11 `interrupt_ack`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| status | string | "acknowledged" |
+| message | string | "你的补充已记录，将在下一阶段纳入讨论" |
+| seq | number | |
+
+---
+
+## 十一、SSE 恢复契约
+
+**MVP 策略**：状态恢复，不做逐 chunk 重放。
+
+**服务端规则**：
+```typescript
+const holdsLock = (discussion.execution_lock_token === currentLockToken);
+
+if (status === 'completed') {
+  send restore(can_stream=false) + summary + done → close
+} else if (status in ['streaming','summarizing']) {
+  if (holdsLock) {
+    send restore(can_stream=true) + completed messages → continue streaming
+  } else {
+    send restore(can_stream=false) + completed messages → close
+  }
+} else if (status in ['failed','aborted']) {
+  send restore(can_stream=false, error_code, error_message) → close
+} else if (status === 'created') {
+  // 不应该到这里（created 时应走 session-starter 锁获取流程）
+}
+```
+
+**前端 polling 规则**（`can_stream=false` 且 status 非终态时）：
+1. 每 3 秒 `GET /api/discussions/:id`
+2. 检查 status + last_completed_round + summary
+3. status 变为终态 → 拉取完整结果
+4. 最长 polling 180 秒后显示"讨论仍在进行中，请稍后刷新"
+
+**MVP 不支持**：跨 serverless 实例实时续流、分布式事件流、多客户端实时同步。
+
+---
+
+## 十二、核心服务实现
+
+### 12.1 session-starter（讨论启动唯一路径）
+
+执行锁获取 + orchestrator 启动的逻辑抽成独立模块，CLI 和 Web 共用：
+
+```typescript
+// src/lib/orchestrator/session-starter.ts
+
+export async function startOrAttachDiscussion(params: {
+  actor: ActorContext;
+  discussionId: string;
+  onEvent: (event: SSEEvent) => void;
+}): Promise<{ role: 'owner' | 'observer'; discussion: Discussion }> {
+  const discussion = await getDiscussion(params.discussionId);
+  
+  if (discussion.status === 'created') {
+    const lockAcquired = await tryAcquireLock(discussion.id);
+    if (lockAcquired) {
+      await logExecution(discussion.id, 'started');
+      runConsensusDiscussion({ ...params, discussion }).catch(handleFatalError);
+      return { role: 'owner', discussion };
+    }
+  }
+  
+  return { role: 'observer', discussion };
+}
+```
+
+**职责分工**：
+- `session-starter.ts`：判断 ownership、获取锁、启动 orchestrator
+- `handleFatalError`：必须负责：(1) 将 discussion 状态 CAS 迁移到 `failed`（写入 `failed_at` + `error_code` + `error_message`）；(2) 释放执行锁；(3) 根据当前 billing state 执行既定账务收尾逻辑（release 未消耗预占 / refund 已扣减部分，具体路径由 hold/settle/release/refund 语义决定）；(4) 记录 `discussion_executions` 终态。即：handleFatalError 承担的是 orchestrator catch 块同等的收尾职责，确保不会留下悬挂的 `streaming` 状态或冻结的积分
+- Web `GET /stream`：调用 `startOrAttachDiscussion()`，根据 role 决定是推实时流还是返回 restore
+- CLI `council-run`：调用 `startOrAttachDiscussion()`，owner 则实时消费事件
+
+**铁律**：
+- 重复连接到同一 discussion 时，`session-starter` 返回 `observer`，不会重复启动
+
+### 12.2 Orchestrator 主流程
+
+```typescript
+// src/lib/orchestrator/consensus.ts
+// MVP 唯一主执行路径
+
+async function runConsensusDiscussion(params: {
+  actor: ActorContext;
+  discussionId: string; topic: string; models: string[];
+  billingSnapshotId: string;
+  onEvent: (event: SSEEvent) => void;
+}) {
+  const startTime = Date.now();
+  let totalRawCost = 0;
+
+  try {
+    await casUpdateStatus(discussionId, ['created'], 'streaming', { execution_started_at: new Date() });
+    const roleMap = ROLE_MODEL_MAPPING['consensus'];
+
+    // ═══ Round 1 ═══
+    onEvent(progress(1, 'independent'));
+    const prompts1 = await loadPrompts(models, 'independent', roleMap);
+    const round1 = await streamHub.executeRound({ models, messages: buildR1(prompts1, topic), prompts: prompts1, onEvent });
+    await persistRound(discussionId, 1, round1);
+    totalRawCost += round1.roundRawCost;
+    onEvent(roundDone(1, round1));
+
+    if (!canContinue(startTime)) { await saveProgress(discussionId, 1, totalRawCost); return; }
+
+    // ═══ Round 2（匿名互评）═══
+    onEvent(progress(2, 'anonymous_review'));
+    const { anonymizedTexts, labels } = await anonymizer.anonymizeAndPersist(discussionId, 2, round1.completed);
+    onEvent(anonymize(2, labels));
+    const prompts2 = await loadPrompts(round1.completedModels, 'review', roleMap);
+    const round2 = await streamHub.executeRound({ models: round1.completedModels, messages: buildR2(prompts2, topic, anonymizedTexts), prompts: prompts2, onEvent });
+    await persistRound(discussionId, 2, round2);
+    totalRawCost += round2.roundRawCost;
+    onEvent(roundDone(2, round2));
+
+    const compressed = await contextManager.compressAndVerify(discussionId, [round1, round2]);
+    if (!canContinue(startTime)) { await saveProgress(discussionId, 2, totalRawCost); return; }
+
+    // ═══ Round 3（反驳修正）═══
+    onEvent(progress(3, 'rebuttal'));
+    const prompts3 = await loadPrompts(round2.completedModels, 'rebuttal', roleMap);
+    const round3 = await streamHub.executeRound({ models: round2.completedModels, messages: buildR3(prompts3, topic, compressed), prompts: prompts3, onEvent });
+    await persistRound(discussionId, 3, round3);
+    totalRawCost += round3.roundRawCost;
+    onEvent(roundDone(3, round3));
+
+    // ═══ Secretary ═══
+    await casUpdateStatus(discussionId, ['streaming'], 'summarizing');
+    onEvent(progress(3, 'secretary_summary'));
+    const summary = await secretary.generateAndValidate({ topic, compressed, models, onEvent });
+    totalRawCost += SECRETARY_RAW_COST;
+
+    await finishDiscussion(discussionId, summary, totalRawCost);
+    await casUpdateStatus(discussionId, ['summarizing'], 'completed', { completed_at: new Date() });
+    await billing.settle(params.actor.userId, discussionId, totalRawCost, billingSnapshotId);
+    queueQualityEvaluation(discussionId);
+
+    onEvent(summaryEvent(summary));
+    onEvent(doneEvent(totalRawCost, billingSnapshotId));
+
+  } catch (error) {
+    await casUpdateStatus(discussionId, ['created','streaming','summarizing'], 'failed', {
+      failed_at: new Date(), error_code: error.code || 'DISCUSSION_FAILED', error_message: error.message,
+    });
+    await billing.refund(params.actor.userId, discussionId, totalRawCost, billingSnapshotId);
+    onEvent(errorEvent(error));
+  }
+}
+```
+
+### 12.3 StreamHub（容错并行流）
+
+```typescript
+const ROUND_RULES = {
+  MODEL_TIMEOUT_MS: 45_000,
+  MODEL_TTFT_TIMEOUT_MS: 15_000,
+  MIN_MODELS_PER_ROUND: 2,
+  MAX_RETRIES_PER_MODEL: 1,
+  RETRY_WITH_DEGRADED: true,
+} as const;
+
+// executeRound → streamWithRetry → streamSingle
+// streamWithRetry: 首次失败→emit(retrying/degraded)→重试→再失败→emit(skipped)
+// streamSingle: TTFT超时+全程超时+输出安全检查+token统计+rawCost计算
+```
+
+### 12.4 Secretary（唯一管线）
+
+**zod schema 定义**（文件：`src/lib/orchestrator/secretary.ts`）：
+
+```typescript
+import { z } from 'zod';
+
+const SecretaryRawOutputSchema = z.object({
+  consensus: z.array(z.object({
+    content: z.string().min(1),
+    supporting_models: z.array(z.string()),
+    evidence_refs: z.array(z.string()).default([]),
+  })).min(1).max(5),
+  disagreements: z.array(z.object({
+    topic: z.string().min(1),
+    type: z.enum(['fact_conflict', 'context_gap', 'logic_divergence', 'preference_difference']),
+    positions: z.array(z.object({
+      model_id: z.string(),
+      stance: z.enum(['for', 'against', 'neutral']),
+      summary: z.string().min(1),
+    })).min(2),
+    severity: z.enum(['high', 'medium', 'low']),
+  })),
+  recommendation: z.string().min(10),
+  confidence: z.enum(['high', 'medium', 'low']),
+  open_questions: z.array(z.string()).default([]),
+  decision_boundary: z.string().optional(),
+  evidence_refs: z.array(z.string()).default([]),
+});
+```
+
+**处理管线**：
+
+```
+callSecretary() → JSON.parse → SecretaryRawOutputSchema.parse() → validateSemantics() → 补 disclaimer/is_degraded → DiscussionSummaryFinal
+                                                                                        ↓ 失败
+                                                                 callSecretary(strict) → parse → validate → 补字段
+                                                                                        ↓ 再失败
+                                                                                   buildDegradedSummary(is_degraded=true)
+```
+
+语义校验硬规则：
+1. `supporting_models` ⊆ 参与模型集合
+2. `positions[].model_id` ⊆ 参与模型集合
+3. `consensus` 和 `disagreements` 不能同时空
+4. `confidence='high'` 时 `evidence_refs`（root + point level）≥ 1
+
+### 12.5 ContextManager
+
+压缩产出 `CompressedRoundState`，持久化到 `discussion_rounds.compressed_state`。
+验证：core_stance 非空、unresolved_conflicts 有分歧时 must_answer 非空。
+验证失败 → fallback 到 heavier context（更多原文片段）。
+
+### 12.6 Anonymizer
+
+IDENTITY_PATTERNS 正则剥离 + signature style 削弱 + 映射写入 `discussion_anonymization_maps`。
+前端永不接收映射。reveal = `[FUTURE]`。
+
+---
+
+## 十三、安全与风控
+
+> MVP 基础风控。能挡低级攻击，不是完整安全边界。Phase 2 升级 ML 分类器。
+
+**输入**：注入 pattern 正则 + topic_hash 去重(24h) + 长度上限(chat 4000/council 2000 token) + 风险分级(高风险关键词→high_risk)
+**输出**：system prompt 泄露检测(n-gram 相似度>0.3) + PII 检测(SSN/email/信用卡 pattern)
+**资源**：用户 token/分钟 50K + 讨论 token 总量 200K + IP 注册/小时 5 + Plan 级日限(见常量) + 系统月度 $1,000 预算
+
+**`normalizeTopic(topic)`**：trim → toLowerCase → collapse whitespace → 移除 zero-width → 全角→半角标点 → 去 markdown 噪音。
+
+---
+
+## 十四、MVP Prompt 冻结包
+
+**铁律**：以下 prompt 正文是 MVP 首版实现内容。Agent 不得改写语义。变量用 `{{variable}}` 标记。
+
+### 14.1 Round 1 — 独立回答
+
+```
+你是一位讨论参与者。{{role_description}}
+
+你正在参与一场关于以下话题的讨论：
+{{topic}}
+
+请给出你的独立观点和分析。要求：
+1. 明确表达你的核心立场
+2. 给出支撑你立场的关键证据或论据（如有数据请引用来源）
+3. 主动指出你看到的风险或不确定性
+4. 回答长度 200-400 字
+5. 不要试图讨好或迎合任何人，说出你真正的判断
+6. 必须找出至少一个可能的反对观点并说明为什么你不同意
+
+禁止：
+- 使用"我作为AI/语言模型/Claude/GPT/..."等自我身份表述
+- 使用"当然/没问题/很高兴帮助"等客套开头
+```
+
+**变量**：`{{role_description}}` = ROLE_DESCRIPTIONS[角色]，`{{topic}}` = 用户议题
+
+### 14.2 Round 2 — 匿名互评
+
+```
+你是一位讨论参与者。{{role_description}}
+
+讨论话题：{{topic}}
+
+以下是各位匿名参与者在上一轮的观点：
+{{anonymized_round1_texts}}
+
+请对以上各位的观点进行评价。要求：
+1. 必须找出其他参与者观点中至少一个你不同意的地方，并给出具体理由
+2. 如果某个观点改变了你的想法，诚实承认并说明原因
+3. 指出你认为最薄弱的论证，解释为什么
+4. 如果某个参与者引用了数据或证据，评估其可靠性
+5. 回答长度 150-300 字
+6. 不要泛泛而谈"很有道理"，必须具体到某个观点或论据
+
+禁止：
+- 使用"我作为AI/语言模型"等自我身份表述
+- 无差别赞美所有观点
+- 猜测参与者的真实身份
+```
+
+**变量**：`{{role_description}}`，`{{topic}}`，`{{anonymized_round1_texts}}` = Anonymizer 产出
+
+### 14.3 Round 3 — 反驳修正
+
+```
+你是一位讨论参与者。{{role_description}}
+
+讨论话题：{{topic}}
+
+前两轮讨论摘要：
+{{compressed_context}}
+
+基于前两轮的讨论，请给出你的最终立场。要求：
+1. 明确说明你的立场是否有所改变，如果是，具体是什么改变了你的想法
+2. 对之前被他人质疑的观点进行回应
+3. 如果你发现自己之前的论证有薄弱之处，诚实承认
+4. 给出你的最终建议
+5. 回答长度 150-300 字
+
+禁止：
+- 使用"我作为AI/语言模型"等自我身份表述
+- 简单重复第一轮的观点而不回应质疑
+```
+
+**变量**：`{{role_description}}`，`{{topic}}`，`{{compressed_context}}` = CompressedRoundState JSON
+
+### 14.4 Secretary — 书记员总结
+
+```
+你是一场多方讨论的书记员。你的职责是忠实、准确地总结讨论结果。
+
+讨论话题：{{topic}}
+
+讨论参与者：{{participating_models}}
+
+讨论内容摘要：
+{{compressed_rounds}}
+
+请输出一份结构化 JSON 总结。要求严格按照以下 schema，不要添加任何 markdown 标记或额外文字：
+
+{
+  "consensus": [
+    { "content": "共识内容", "supporting_models": ["model_id", ...], "evidence_refs": ["证据引用"] }
+  ],
+  "disagreements": [
+    {
+      "topic": "分歧议题",
+      "type": "fact_conflict|context_gap|logic_divergence|preference_difference",
+      "positions": [
+        { "model_id": "model_id", "stance": "for|against|neutral", "summary": "立场摘要" }
+      ],
+      "severity": "high|medium|low"
+    }
+  ],
+  "recommendation": "方向性建议（至少10字）",
+  "confidence": "high|medium|low",
+  "open_questions": ["未解决的问题"],
+  "decision_boundary": "决策边界条件（可选）",
+  "evidence_refs": ["全局证据引用"]
+}
+
+铁律：
+- supporting_models 和 positions 中的 model_id 只能使用以下模型 ID：{{participating_models}}
+- 不得编造未在讨论中出现的模型立场
+- 不得伪造 evidence_refs
+- consensus 和 disagreements 不能同时为空
+- 只输出 JSON，不要任何其他文字
+```
+
+**变量**：`{{topic}}`，`{{participating_models}}` = 逗号分隔的模型 ID，`{{compressed_rounds}}` = CompressedRoundState[] JSON
+
+### 14.5 Secretary Degraded Fallback
+
+当 SecretaryRawOutputSchema 校验失败重试时，追加以下约束：
+
+```
+上一次你的输出 JSON 格式不正确。请严格按照以下规则重新输出：
+1. 只输出纯 JSON，不要 ```json 标记
+2. 所有字段必须存在
+3. consensus 至少 1 条
+4. disagreements 的 positions 至少 2 个
+5. recommendation 至少 10 个字
+```
+
+### Prompt Seed Data
+
+> **铁律**：以下 seed SQL 中的 `content` 字段必须与上方 Prompt 冻结包正文逐字一致。Prompt 冻结包正文是唯一 Prompt 真相源。
+
+```sql
+INSERT INTO prompt_templates (version, model, mode, role, round_type, content, is_active, created_by, notes)
+VALUES
+-- Round 1: 独立回答
+('1.0.0', 'all', 'consensus', 'participant', 'independent',
+'你是一位讨论参与者。{{role_description}}
+
+你正在参与一场关于以下话题的讨论：
+{{topic}}
+
+请给出你的独立观点和分析。要求：
+1. 明确表达你的核心立场
+2. 给出支撑你立场的关键证据或论据（如有数据请引用来源）
+3. 主动指出你看到的风险或不确定性
+4. 回答长度 200-400 字
+5. 不要试图讨好或迎合任何人，说出你真正的判断
+6. 必须找出至少一个可能的反对观点并说明为什么你不同意
+
+禁止：
+- 使用"我作为AI/语言模型/Claude/GPT/..."等自我身份表述
+- 使用"当然/没问题/很高兴帮助"等客套开头',
+TRUE, 'system', 'MVP 冻结版 v1.0.0'),
+
+-- Round 2: 匿名互评
+('1.0.0', 'all', 'consensus', 'participant', 'review',
+'你是一位讨论参与者。{{role_description}}
+
+讨论话题：{{topic}}
+
+以下是各位匿名参与者在上一轮的观点：
+{{anonymized_round1_texts}}
+
+请对以上各位的观点进行评价。要求：
+1. 必须找出其他参与者观点中至少一个你不同意的地方，并给出具体理由
+2. 如果某个观点改变了你的想法，诚实承认并说明原因
+3. 指出你认为最薄弱的论证，解释为什么
+4. 如果某个参与者引用了数据或证据，评估其可靠性
+5. 回答长度 150-300 字
+6. 不要泛泛而谈"很有道理"，必须具体到某个观点或论据
+
+禁止：
+- 使用"我作为AI/语言模型"等自我身份表述
+- 无差别赞美所有观点
+- 猜测参与者的真实身份',
+TRUE, 'system', 'MVP 冻结版 v1.0.0'),
+
+-- Round 3: 反驳修正
+('1.0.0', 'all', 'consensus', 'participant', 'rebuttal',
+'你是一位讨论参与者。{{role_description}}
+
+讨论话题：{{topic}}
+
+前两轮讨论摘要：
+{{compressed_context}}
+
+基于前两轮的讨论，请给出你的最终立场。要求：
+1. 明确说明你的立场是否有所改变，如果是，具体是什么改变了你的想法
+2. 对之前被他人质疑的观点进行回应
+3. 如果你发现自己之前的论证有薄弱之处，诚实承认
+4. 给出你的最终建议
+5. 回答长度 150-300 字
+
+禁止：
+- 使用"我作为AI/语言模型"等自我身份表述
+- 简单重复第一轮的观点而不回应质疑',
+TRUE, 'system', 'MVP 冻结版 v1.0.0'),
+
+-- Secretary: 书记员总结
+('1.0.0', 'all', 'consensus', 'secretary', 'summary',
+'你是一场多方讨论的书记员。你的职责是忠实、准确地总结讨论结果。
+
+讨论话题：{{topic}}
+
+讨论参与者：{{participating_models}}
+
+讨论内容摘要：
+{{compressed_rounds}}
+
+请输出一份结构化 JSON 总结。要求严格按照以下 schema，不要添加任何 markdown 标记或额外文字：
+
+{
+  "consensus": [
+    { "content": "共识内容", "supporting_models": ["model_id", ...], "evidence_refs": ["证据引用"] }
+  ],
+  "disagreements": [
+    {
+      "topic": "分歧议题",
+      "type": "fact_conflict|context_gap|logic_divergence|preference_difference",
+      "positions": [
+        { "model_id": "model_id", "stance": "for|against|neutral", "summary": "立场摘要" }
+      ],
+      "severity": "high|medium|low"
+    }
+  ],
+  "recommendation": "方向性建议（至少10字）",
+  "confidence": "high|medium|low",
+  "open_questions": ["未解决的问题"],
+  "decision_boundary": "决策边界条件（可选）",
+  "evidence_refs": ["全局证据引用"]
+}
+
+铁律：
+- supporting_models 和 positions 中的 model_id 只能使用以下模型 ID：{{participating_models}}
+- 不得编造未在讨论中出现的模型立场
+- 不得伪造 evidence_refs
+- consensus 和 disagreements 不能同时为空
+- 只输出 JSON，不要任何其他文字',
+TRUE, 'system', 'MVP 冻结版 v1.0.0');
+```
+
+---
+
+## 十五、页面与组件实现规格
+
+### 15.1 首页 `/`（Landing Page）
+
+**目标**：3 秒内让用户理解"AI 模型在互相辩论"。
+**组件**：Hero(主标题+副标题+活 demo 回放+CTA) + ValueProps(3 个卖点图标) + ScenarioDemos(3-4 截图) + PricingTable + Footer
+**状态**：loading → loaded。无需登录。SSG 渲染。
+**验收**：页面打开 < 2s，CTA 可点击，移动端适配。
+
+### 15.2 聊天主界面 `/chat`
+
+**目标**：日常 AI 聊天 + 一键升级为议会。
+**组件**：
+- `ConversationList`：左侧历史列表，按 updated_at 排序
+- `ChatInput`：输入框 + 模型选择器 + "召集议会 🏛️" 按钮
+  - 三态：单模型态 / 议会进行中态 / 讨论后追问态
+  - 单模型态：`[ModelPicker ▾] [输入...] [发送] [召集议会 🏛️]`
+  - 议会态：`[输入（插话）...] [发送]`
+  - 追问态：`[💬 书记员] [🎯 @模型 ▾] [🔥 新讨论]` + `[输入...] [发送]`
+- `ModelPicker`：下拉选择模型，显示品牌色圆点
+- `SuggestedTopics`：6 个推荐话题卡片（输入框为空时显示）
+- `MessageBubble`：消息气泡，带模型品牌色左边框 + logo
+
+**状态**：idle / streaming / completed / followup / error
+**关键交互**：
+- 切换模型：下一条消息自动用新模型，历史保留
+- 召集议会：弹出 `CouncilModal`
+- 升级为议会：从快问压缩上下文 → 确认 → 创建新议会
+
+### 15.3 议会详情 `/chat/:id`（type=council）
+
+**组件**：
+- `RoundProgressBar`：`第 N 轮 / 共 3 轮` + 阶段文字 + 各模型完成状态圈
+- `CouncilPanel`（桌面 ≥768px）：2×2 四宫格，每格一个模型，独立滚动
+- `CouncilTimeline`（移动 <768px）：时间线折叠卡片，正在输出排最上
+- `ModelCard`：品牌色边框 + logo + 流式文字 + 呼吸灯（streaming 时）
+- `SummaryCard`：共识/分歧/建议/信心度 + 免责声明
+- `DisagreementMatrix`：桌面=立场表格(行=论点,列=模型)；移动=分歧卡片
+- `FollowupBar`：三态切换（书记员/@模型/新讨论）
+- `RestoreBanner`："已恢复到最近保存阶段"（restore 事件后显示）
+- `CouncilModal`：弹窗 — 模型勾选 + 预估消耗 + [开始讨论]
+
+**状态**：
+- loading → streaming(R1→R2→R3) → summarizing → completed → followup
+- error → 显示错误 + 已完成轮次
+- restore → 静态渲染已完成消息 + RestoreBanner
+
+**特殊状态处理**：
+- `is_degraded=true`：SummaryCard 显示降级提示 + 原文前 500 字
+- `can_stream=false`：关闭 SSE，切 polling，显示"正在等待讨论完成..."
+- 积分不足：弹出升级提示（在 CouncilModal 点开始前检查）
+- 模型 skipped：ModelCard 显示"⏰ 本轮跳过" + 灰色
+
+### 15.4 辩论广场 `/explore`
+
+**组件**：`DebateCard`(预览) + `DebateDetail`(/explore/:slug)
+**状态**：loading → loaded → empty。无需登录。SSR。
+**验收**：Twitter Cards meta 正确。OG 图片 1200×628。
+
+### 15.5 管理后台 `/admin`
+
+**组件**：ModelHealth + CostDashboard + SecurityDashboard + PromptManager + FeedbackList + DiscussionList(含 quality_score)
+**认证**：`email === ADMIN_EMAIL`
+**验收**：能看到每模型超时率、降级率、成本趋势、拦截次数。
+
+### 15.6 设置页 `/settings`
+
+**组件**：PreferenceForm(默认模型+语言+名称) + BillingInfo(积分余额+流水) + BYOKManager `[FUTURE]`
+
+---
+
+## 十六、认证
+
+NextAuth.js v5 + Google OAuth。JWT session。
+新用户注册：发放 3 次前沿 + 5 次平价讨论。设备指纹+IP 防刷。
+管理后台：`ADMIN_EMAIL` 环境变量鉴权。
+公开路由：/ /login /pricing /explore /explore/:slug。
+其余路由：需 session。
+
+**CLI 阶段**：不需要 Google OAuth。通过 `ActorContext` 传入 `{ userId: process.env.CLI_TEST_USER_ID, source: 'cli' }` 跳过认证。Phase B 接入 Web 时启用完整认证流程。
+
+---
+
+## 十七、前端架构
+
+### 17.1 Zustand Store
+
+```typescript
+// chat-store: conversationId, type, status, currentModelId, messages, councilModels,
+//   currentRound, modelStreams, summary, followupMode, handleRestore(), reset()
+// user-store: plan, creditsBalance, freeFrontierRemaining, locale, refreshCredits()
+// admin-store: modelHealth, promptTemplates, costMetrics
+```
+
+### 17.2 统一错误处理
+
+```typescript
+class ApiError { code: string; message: string; status: number; }
+// 预定义：UNAUTHORIZED(401), FORBIDDEN(403), INVALID_INPUT(400), INJECTION_DETECTED(400),
+// RATE_LIMITED(429), MODEL_NOT_ALLOWED(403), MAX_MODELS_EXCEEDED(400),
+// INSUFFICIENT_CREDITS(402), NOT_FOUND(404), MODEL_TIMEOUT(504), OPENROUTER_ERROR(502)
+```
+
+### 17.3 国际化
+
+next-intl。en.json + zh.json 覆盖 common/chat/council/explore/pricing/credits。
+
+---
+
+## 十八、部署
+
+```env
+GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NEXTAUTH_SECRET, NEXTAUTH_URL,
+DATABASE_URL, OPENROUTER_API_KEY, OPENROUTER_BASE_URL, ADMIN_EMAIL,
+BYOK_ENCRYPTION_KEY, CLI_TEST_USER_ID
+```
+
+```json
+// vercel.json
+{ "functions": { "discussions/[id]/stream": { "maxDuration": 120 }, "chat/[id]/stream": { "maxDuration": 60 } },
+  "crons": [{ "path": "/api/cron/monthly-reset", "schedule": "0 0 1 * *" }] }
+```
+
+---
+
+## 十九、共享常量
+
+```typescript
+export const MODEL_COLORS = { 'anthropic/claude-sonnet-4.6': '#D97706', 'openai/gpt-5.2': '#10A37F', 'google/gemini-3.1-pro': '#4285F4', 'deepseek/deepseek-chat': '#5B6AE0', 'x-ai/grok-4.1': '#000000' };
+export const MODEL_DISPLAY_NAMES = { 'anthropic/claude-sonnet-4.6': 'Claude', 'openai/gpt-5.2': 'GPT', 'google/gemini-3.1-pro': 'Gemini', 'deepseek/deepseek-chat': 'DeepSeek', 'x-ai/grok-4.1': 'Grok' };
+export const DEGRADATION_MAP = { 'anthropic/claude-sonnet-4.6': 'anthropic/claude-haiku-4.5', 'openai/gpt-5.2': 'openai/gpt-5-mini', 'google/gemini-3.1-pro': 'google/gemini-3-flash' };
+export const ROLE_MODEL_MAPPING = { consensus: { 'anthropic/claude-sonnet-4.6': 'skeptic', 'openai/gpt-5.2': 'pragmatist', 'google/gemini-3.1-pro': 'synthesizer', 'deepseek/deepseek-chat': 'idealist', 'x-ai/grok-4.1': 'challenger' } };
+export const ROLE_DESCRIPTIONS = { skeptic: '你是怀疑论者...', pragmatist: '你是实用主义者...', synthesizer: '你是综合者...', idealist: '你是理想主义者...', challenger: '你是挑战者...' };
+export const DEFAULT_COUNCIL_MODELS = ['anthropic/claude-sonnet-4.6', 'openai/gpt-5.2', 'google/gemini-3.1-pro', 'deepseek/deepseek-chat'];
+export const PLAN_LIMITS = { free: { chatPerDay: 20, councilPerDay: 1, maxModels: 3, tier: 'budget' }, pro: { chatPerDay: 500, councilPerDay: 50, maxModels: 5, tier: 'all' }, pro_max: { chatPerDay: 2000, councilPerDay: 200, maxModels: 10, tier: 'all' }, ultra: { chatPerDay: -1, councilPerDay: -1, maxModels: 10, tier: 'all' } };
+export const BUDGET_MODELS = ['openai/gpt-5-mini', 'google/gemini-3-flash', 'deepseek/deepseek-chat', 'x-ai/grok-4.1', 'anthropic/claude-haiku-4.5'];
+export const ROUND_RULES = { MODEL_TIMEOUT_MS: 45000, MODEL_TTFT_TIMEOUT_MS: 15000, MIN_MODELS_PER_ROUND: 2, MAX_RETRIES_PER_MODEL: 1, RETRY_WITH_DEGRADED: true };
+export const SYSTEM_MONTHLY_BUDGET = 1000;
+export const DISCLAIMER = '⚠️ 本讨论为 AI 模拟审议，不构成财务、法律、医疗或其他专业建议。所有结论仅供参考，最终决策权归用户所有。';
+
+export const FEATURE_FLAGS = { council_enabled: true, frontier_models_enabled: true, followup_enabled: true, explore_enabled: true, quality_evaluation_enabled: true, reveal_enabled: false, reviewer_pipeline_enabled: false };
+export const CIRCUIT_BREAKER = { MODEL_ERROR_THRESHOLD: 0.5, MODEL_ERROR_WINDOW_MS: 300000, DEGRADED_RATE_THRESHOLD: 0.3, BUDGET_WARN_THRESHOLD: 0.8, BUDGET_STOP_THRESHOLD: 1.0 };
+```
+
+---
+
+## 二十、测试与验收矩阵
+
+### 20.1 单元测试（必须全部通过）
+
+| ID | 模块 | 测试项 | 验收 |
+|----|------|--------|------|
+| U01 | 状态机 | 所有白名单迁移成功 | 9 条合法迁移 ✅ |
+| U02 | 状态机 | 所有禁止迁移抛错 | completed→任何 ❌, failed→任何 ❌ |
+| U03 | 幂等 | 同 idempotency_key 二次创建 | 第二次 200 + 记录数=1 |
+| U04 | 执行锁 | 并发锁请求 | 只有一个成功 |
+| U05 | hold | 余额充足 | balance 正确扣减 + 流水 |
+| U06 | hold | 余额不足 | 402 INSUFFICIENT_CREDITS |
+| U07 | settle | 实际<预估 | release 差额 + settle(amount=0) |
+| U08 | settle | 幂等重试 | 第二次无新流水 |
+| U09 | refund | failed 退还 | balance 恢复 + refund 流水 |
+| U10 | anonymizer | 身份剥离 | 输出不含模型名 |
+| U11 | anonymizer | 映射持久化 | DB 有记录 |
+| U12 | summary | 合法 JSON | 校验通过 |
+| U13 | summary | 非法 JSON | 重试→成功 或 降级 |
+| U14 | summary | positions.model_id 不在集合中 | 校验失败 |
+| U15 | summary | confidence=high 无 evidence | 校验失败 |
+| U16 | compression | 结构化压缩 | key_evidence 保留数字 |
+| U17 | compression | 验证失败 | fallback heavier context |
+| U18 | risk | 注入 pattern | 被拦截 |
+| U19 | risk | topic_hash 重复 | 被拦截 |
+| U20 | normalize | 标准化 | 全角→半角 + collapse whitespace |
+
+### 20.2 集成测试（必须全部通过）
+
+| ID | 场景 | 预期 |
+|----|------|------|
+| I01 | 1 模型 timeout | skipped + 其余继续 + round_done 正确 |
+| I02 | 2 模型失败 | 2 完成 ≥ MIN(2) → 继续 |
+| I03 | 3 模型失败 | completed < MIN → RoundFailedError → failed + 退款 |
+| I04 | summary JSON 非法 | 重试→成功=completed；再失败=degraded |
+| I05 | SSE 断线恢复 | restore 事件 + 已完成消息 |
+| I06 | 双击创建 | 只 1 条记录 |
+| I07 | settle 重试 | 只 1 条流水 |
+| I08 | 积分不足 hold | 402 |
+| I09 | Free 用户前沿模型 | 403 MODEL_NOT_ALLOWED |
+| I10 | Free 用户 4 模型 | 400 MAX_MODELS_EXCEEDED(3) |
+| I11 | model_error 事件 action=degraded | 字段完整 + 降级模型正确 |
+| I12 | round_done.failed_models 结构 | ModelFailureRecord[] 格式 |
+
+### 20.3 E2E 测试
+
+| ID | 流程 | 验证 |
+|----|------|------|
+| E01 | 完整 4 模型 3 轮 + summary | 全流程跑通 + 积分正确 |
+| E02 | chat → upgrade to council | 压缩+匿名+新讨论+parent_id |
+| E03 | council → followup secretary | 基于 summary 回答 |
+| E04 | council → followup @model | 指定模型回答 |
+| E05 | 系统预算超限 | 暂停免费额度 |
+| E06 | can_stream=false → polling → completed | 前端正确切换 |
+
+### 20.4 Chaos 测试
+
+| ID | 故障 | 预期 |
+|----|------|------|
+| C01 | 上游 429 | 重试→降级→或 skip |
+| C02 | 上游无 usage | 估算 token |
+| C03 | DB 写失败 | 重试 3 次→告警 |
+| C04 | SSE 中途断 | 前端重连→restore |
+| C05 | Vercel 接近 120s | 保存进度→返回 |
+| C06 | 全部模型挂 | failed + 全额退款 |
+
+### 20.5 CLI 事件一致性验证
+
+| ID | 测试项 | 验收 |
+|----|--------|------|
+| CLI-E01 | CLI 事件字段与 SSE 事件定义逐字段对齐 | 连续 3 场讨论事件结构一致 |
+
+---
+
+## 二十一、CLI 验证器
+
+### 21.1 CLI 的定位
+
+CLI 是以下四种角色的合体：
+
+| 角色 | 用途 |
+|------|------|
+| **Orchestration Harness** | 在终端直接驱动 runConsensusDiscussion 主流程 |
+| **Engine Validator** | 验证 3 轮讨论、匿名互评、容错、书记员总结、会话升级等核心能力 |
+| **Debug / Replay Tool** | 回放历史讨论事件流、定位故障、辅助 prompt 迭代 |
+| **Test Entrypoint** | 集成测试和 chaos 测试的执行入口 |
+
+### 21.2 CLI 命令清单
+
+#### `agora ask` — 单模型快问（one-shot）
+
+```bash
+agora ask "什么是量子计算" --model openai/gpt-5.2
+```
+
+| 项目 | 说明 |
+|------|------|
+| 目标 | 验证 OpenRouter 适配层 + 单模型流式响应 + token 统计 |
+| 最小输入 | topic(string) + model(string) |
+| 最小输出 | 流式文本 + token 统计 + raw_cost |
+| 验证点 | 流式输出完整、token 统计正确、raw_cost 计算正确、输入安全检查生效 |
+| 与 Web 关系 | 同一个 `lib/openrouter/client.ts` + `lib/security/risk-control.ts` |
+
+#### `agora chat` — 会话化单模型（多轮对话）
+
+```bash
+agora chat --model openai/gpt-5.2
+```
+
+| 项目 | 说明 |
+|------|------|
+| 目标 | 验证会话化对话 + 可变模型切换 + 上下文保持 + 升级入口 |
+| 交互命令 | `/switch <model>` 切换模型、`/upgrade` 升级为议会、`/exit` 退出 |
+| 验证点 | 中途 `/switch` 切换模型不丢上下文、每条消息带 `logical_model_id`、conversation 记录正确 |
+| 与 Web 关系 | 同一个 conversations/messages 数据模型 |
+
+#### `agora council run` — 发起完整议会讨论
+
+```bash
+agora council run "AI 是否会取代程序员"
+agora council run "比特币是否值得投资" --models claude,gpt,gemini,deepseek
+agora council run "..." --dry-run  # 只预估成本不执行
+```
+
+| 项目 | 说明 |
+|------|------|
+| 目标 | 验证完整 3 轮共识模式 |
+| 最小输出 | 3 轮模型输出 + 匿名标签 + DiscussionSummaryFinal JSON + 成本统计 |
+| 验证点 | 状态机迁移正确、匿名互评无模型名泄露、SecretaryRawOutputSchema 校验通过、容错生效、CompressedRoundState 保留关键证据、token/cost 追踪正确 |
+| 与 Web 关系 | 同一个 `lib/orchestrator/consensus.ts`，Web 只是换了 renderer |
+
+#### `agora council upgrade` — 从单模型会话升级为议会
+
+```bash
+agora council upgrade <chatConversationId>
+agora council upgrade <chatConversationId> --models claude,gpt,gemini,deepseek
+```
+
+**upgrade 执行流程**：
+1. 读取原 chat conversation 的最近 N 条 messages（N=10，可配置）
+2. 用 ContextManager 压缩为 topic summary（作为议会讨论的 topic）
+3. 创建新 conversation：`type='council'`, `parent_id=原chatId`, `topic=压缩后的摘要`
+4. 执行标准 `runConsensusDiscussion`（3 轮共识模式）
+5. 新 conversation 的 `fork_point_message_id` 指向原 chat 的最后一条消息
+
+**验证点**：`parent_id` 正确关联、压缩后的 topic 保留原对话关键信息、新讨论的状态机独立于原 chat、原 chat 不受影响
+
+#### `agora council replay` — 回放历史讨论
+
+```bash
+agora council replay {discussionId}
+agora council replay --last
+```
+
+| 项目 | 说明 |
+|------|------|
+| 目标 | 验证事件流完整性 + 辅助 prompt 迭代和 debug |
+| 验证点 | JSONL 事件文件完整、replay 输出与首次执行一致 |
+
+#### `agora council followup` — 对已有讨论追问
+
+```bash
+agora council followup {discussionId} --mode ask_secretary "最大的风险是什么"
+agora council followup {discussionId} --mode ask_model --model openai/gpt-5.2 "展开说说"
+```
+
+| 项目 | 说明 |
+|------|------|
+| 目标 | 验证 followup 三种模式（ask_secretary / ask_model / new_council） |
+| 与 Web 关系 | 同一个 followup 逻辑 |
+
+#### `agora council export` — 导出结构化总结
+
+```bash
+agora council export {discussionId} --format json
+agora council export {discussionId} --format markdown
+```
+
+| 项目 | 说明 |
+|------|------|
+| 目标 | 验证 DiscussionSummaryFinal 的消费完整性 |
+| 验证点 | JSON 字段与类型定义一致、Markdown 渲染完整 |
+
+### 21.3 Go / No-Go 验收标准
+
+#### 必须满足（Go 条件）
+
+| # | 标准 | 验证方式 |
+|---|------|---------|
+| G01 | `agora ask` 稳定跑通，流式输出完整 | 手动 + 自动化 |
+| G02 | `agora chat` 多轮对话 + `/switch` 切换模型不丢上下文 | 手动 |
+| G03 | `agora council run` 4 模型 3 轮完整跑通 | 手动运行 3 场以上 |
+| G04 | `agora council upgrade` 从 chat 升级为 council，parent_id 正确 | 手动 + DB 验证 |
+| G05 | 匿名互评生效（第 2 轮输出无模型名） | 检查 Round 2 输出 |
+| G06 | Secretary 输出通过 SecretaryRawOutputSchema 校验 | U12 通过 |
+| G07 | Secretary 降级模式可触发 | U13 通过 |
+| G08 | 任一模型 timeout → skip → 讨论继续 | I01 通过 |
+| G09 | 2 模型失败 → 讨论继续 | I02 通过 |
+| G10 | 3 模型失败 → 讨论失败 + refund | I03 通过 |
+| G11 | 状态机迁移严格（终态不可回退） | U01, U02 通过 |
+| G12 | hold/settle/release/refund 账本语义正确 | U05-U09 通过 |
+| G13 | session 持久化到 DB | 查询 DB 验证 |
+| G14 | JSONL 事件日志可生成 | 检查文件存在且可解析 |
+| G15 | `agora council replay` 可回放 | 手动验证 |
+| G16 | token / raw_cost / platform_price 追踪正确 | 对照 billing_snapshots |
+| G17 | 事件字段与 SSE 事件定义一致 | 逐字段对照 |
+| G18 | 核心协议字段不再频繁变更 | 连续 3 场讨论结构一致 |
+| G19 | session-starter 统一启动路径验证 | 重复调用不重复启动 |
+
+#### 加分项
+
+| # | 标准 |
+|---|------|
+| N01 | `agora council followup` 三种模式可用 |
+| N02 | 支持 `--mock-provider` 用确定性输出做回归测试 |
+| N03 | 插话注入可用 |
+| N04 | deterministic replay |
+
+### 21.4 非目标（明确不做）
+
+| # | 非目标 | 原因 |
+|---|--------|------|
+| X01 | 独立 CLI 产品设计 | CLI 是内部工具，不是产品 |
+| X02 | 复杂 TUI（blessed/ink） | chalk 着色够用 |
+| X03 | CLI 专属状态机 | 复用 core 层状态机 |
+| X04 | CLI 专属 summary schema | 复用 SecretaryRawOutput → DiscussionSummaryFinal |
+| X05 | CLI 专属 prompt 体系 | 复用冻结包 |
+| X06 | CLI 专属事件定义 | 复用 SSE 事件字段 |
+| X07 | CLI 专属 DB schema | 复用 11 张表 |
+| X08 | 与 Web 断裂的临时逻辑 | 所有 lib 代码必须 Web 可复用 |
+| X09 | CLI 用户认证系统 | CLI 阶段用 `.env` 配 test user |
+| X10 | CLI 支付/计费 UI | 计费逻辑在 lib 层验证 |
+| X11 | `src/lib/` → `src/core/` 物理重构 | 可选工程改进项，不是当前前提 |
+| X12 | JSONL 作为 canonical state | DB 才是 canonical state |
+
+### 21.5 从 CLI 迁移到 Web 的接入规则
+
+**Web 不得重写 orchestration**。Web API Route 必须调用 `src/lib/orchestrator/session-starter.ts` 的 `startOrAttachDiscussion()`。禁止在 API Route 中重新实现执行锁获取或编排启动逻辑。
+
+**前端状态完全来源于事件和状态机**。Web 前端不得自创状态。所有 UI 状态来源于 SSE 事件流或 `GET /api/discussions/:id` 返回的 DB 记录。
+
+**CLI replay 数据可辅助 Web 开发**。Phase A 产出的 JSONL 文件可用于 Web UI mock 开发和 SSE adapter 联调。但 Web 不得依赖 JSONL 文件存在。
+
+---
+
+## 二十二、任务图（Task Graph）与分阶段施工路径
+
+> **铁律**：工程 Agent 必须按 Task Graph 的依赖顺序执行。不得跳过前置任务直接实现后续模块。每个 Task 完成前必须满足对应 Acceptance Criteria。
+
+### 四阶段施工路径总览
+
+```
+Phase A1（最小引擎闭环）→ Phase A2（工程化加固）→ Phase B（Web 最小壳）→ Phase C（产品化完善）
+```
+
+---
+
+### Phase A1：最小引擎闭环验证
+
+**目标**：用最少代码跑通"单模型问答 + 4 模型议会讨论"核心链路。
+
+**范围**：DB schema + migrations + seed data（11 张表）、OpenRouter 适配层、安全层（输入校验基础版）、Orchestrator 核心（状态机 + 3 轮共识）、StreamHub 容错（timeout/retry/skip/degraded）、Anonymizer、Secretary（zod 校验 + 降级）、ContextManager（结构化压缩）、session-starter（统一启动路径）、CLI 骨架 + `agora ask` + `agora council run`、JSONL 事件日志。
+
+**交付物**：`agora ask` 跑通 + `agora council run` 完整 4 模型 3 轮跑通 + 事件流写入 JSONL + DB 持久化正确。
+
+**不做**：计费系统（A1 阶段不 hold/settle）、会话化 chat + upgrade、followup / replay / export、任何前端、精致的终端交互。
+
+**执行策略**：A1 中列出的模块以最小可运行实现为准。安全层只需输入校验基础版（注入 pattern + 长度上限），容错只需覆盖 timeout→skip 主路径，压缩只需产出合法 CompressedRoundState。边界 case 加固统一延后到 A2。A1 的目标是点火跑通闭环。
+
+**Go 条件**：G01, G03, G05, G06, G07, G08, G09, G11, G13, G14, G17
+
+**预估时间**：4-5 天
+
+#### Phase A1 Task Graph
+
+| Task | 名称 | 前置 | 完成标准 |
+|------|------|------|---------|
+| Task-001 | 项目初始化 | 无 | `npm install` 无报错 + `npm run dev` 启动成功 + Drizzle 连 Supabase 成功 + 目录结构与本文一致 |
+| Task-001a | CLI 骨架 + event-logger | Task-001 | `agora --help` 输出正常 + JSONL 写入可用 |
+| Task-002 | 数据模型与 Migrations | Task-001 | 全部 11 张表成功创建 + seed data 插入成功 + 所有索引和约束就绪 |
+| Task-004 | OpenRouter 适配层 | Task-001 | 能调用单个模型获得流式响应 + 常量全部导出 |
+| Task-005 | 安全层 | Task-002 | 注入 pattern 拦截 + topic_hash 去重 + 输入长度上限 + Plan 日限 + normalizeTopic()。**U18, U19, U20** |
+| Task-008 | Orchestrator 核心 | Task-004, Task-005 | 状态迁移白名单 + CAS + 执行锁 + 4 模型 3 轮跑通 + canContinue()。**U01, U02, U04** |
+| Task-009 | StreamHub 容错 | Task-004 | timeout/TTFT 超时 + MIN_MODELS 检查 + retry→degraded→skipped 全链路。**I01, I02, I03, I11, I12** |
+| Task-010 | 匿名化 | Task-002 | 身份剥离 + 映射持久化。**U10, U11** |
+| Task-011 | Secretary 总结 | Task-004 | zod 校验 + 语义校验 + 降级 + DiscussionSummaryFinal。**U12, U13, U14, U15** |
+| Task-012 | ContextManager | Task-004 | CompressedRoundState 产出 + 保真验证。**U16, U17** |
+| Task-014 | Prompt Seed | Task-002 | 4 条 prompt 插入成功 + 与冻结包逐字一致 |
+| Task-002a | session-starter 统一启动路径 | Task-002, Task-008 | CLI 和 Web 共用同一启动入口 + 重复调用不重复启动 |
+| Task-A1-E2E | Phase A1 端到端验证 | Task-001a ~ Task-012, Task-002a | `agora council run` 完整跑通 + G01/G03/G05-G09/G11/G13/G14/G17 满足 |
+
+**执行顺序**：
+```
+Task-001 → Task-002 → Task-004 → Task-005 → Task-001a
+→ Task-008 → Task-009 → Task-010 → Task-011 → Task-012 → Task-014
+→ Task-002a → Task-A1-E2E
+```
+
+---
+
+### Phase A2：工程化加固与完整 CLI
+
+**目标**：补全计费、升级链路、replay、测试，达到 CLI 全面验收。
+
+**范围**：计费系统（hold/settle/release/refund）、`agora chat` + `agora council upgrade`、`agora council replay` + `agora council export` + `agora council followup`、单元测试 U01-U20、集成测试 I01-I04/I06-I12（跳过 I05 SSE 断线）、Chaos 测试 C01-C03/C06（跳过 C04/C05 Vercel 相关）。
+
+**交付物**：CLI 全命令可用 + 所有 core 模块测试通过 + 3+ 场完整讨论的 JSONL replay 文件 + G01-G19 全部满足。
+
+**不做**：Next.js / Vercel / SSE / 前端 / 认证 / 管理后台。
+
+**预估时间**：3-5 天
+
+#### Phase A2 Task Graph
+
+| Task | 名称 | 前置 | 完成标准 |
+|------|------|------|---------|
+| Task-007 | 计费系统 | Task-002 | estimateRawCost + hold/settle/release/refund 全部正确 + 幂等。**U05-U09** |
+| Task-A2-chat | CLI chat + upgrade | Task-A1-E2E, Task-007 | `agora chat` 多轮 + `/upgrade` → council + parent_id。G02/G04/G12 |
+| Task-A2-tools | CLI replay + export + followup | Task-A1-E2E | 三个命令可用 + G15 + N01 |
+| Task-A2-event | 事件契约一致性检查 | Task-A1-E2E | CLI 事件字段与 SSE 定义逐字段对齐。CLI-E01 |
+| Task-A2-test | CLI 全面测试 | Task-A2-chat, Task-A2-tools | U01-U20 + I01-I04/I06-I12 + C01-C03/C06 全部通过 + G01-G19 |
+| Task-015-CLI | CLI 端到端联调 | Task-A2-test | CLI 完整链路跑通 + 所有 Phase A 测试通过 |
+
+**执行顺序**：
+```
+Task-007 → Task-A2-chat → Task-A2-tools
+→ Task-A2-event → Task-A2-test → Task-015-CLI
+```
+
+---
+
+### Phase B：Web 最小壳接入
+
+**目标**：把同一引擎接到 Web，验证 SSE 链路和前端核心交互。
+
+**范围**：Next.js 项目初始化 + API Routes、Google OAuth（NextAuth.js v5）、`POST /api/discussions` + `GET /api/discussions/:id/stream` + `GET /api/discussions/:id`、SSE adapter（session-starter → SSE 推送）、核心前端页面 `/chat`（单模型 + 议会详情）、SSE 恢复契约（restore + can_stream + polling fallback）、集成测试 I05（SSE 断线恢复）、Chaos 测试 C04/C05、E2E 测试 E01/E06。
+
+**交付物**：浏览器中跑通完整讨论 + SSE 实时流 + 断线恢复正常 + 四宫格/时间线 + SummaryCard + RestoreBanner 基础版。
+
+**不做**：Landing Page、Explore、Settings、管理后台、Stripe、国际化。
+
+**预估时间**：5-7 天
+
+#### Phase B Task Graph
+
+| Task | 名称 | 前置 | 完成标准 |
+|------|------|------|---------|
+| Task-003 | 认证与用户基础 | Task-001, Task-002 | Google OAuth + 新用户额度 + 防刷 + 管理后台鉴权 |
+| Task-006 | 单模型聊天（Web） | Task-003, Task-004, Task-005 | 选模型 → 输入 → 流式返回 + 切换模型不丢上下文 |
+| Task-013 | SSE 恢复与 Polling | Task-008 | restore + can_stream + polling。**I05, E06** |
+| Task-016-core | 前端核心页面 | Task-006, Task-015-CLI | Chat + Council Detail 基础版 |
+| Task-015-Web | Web 端到端联调 | Task-015-CLI, Task-016-core | 浏览器跑通 + SSE 恢复 + E01/E06 |
+
+**执行顺序**：
+```
+Task-003 → Task-006 → Task-013 → Task-016-core → Task-015-Web
+```
+
+---
+
+### Phase C：产品化完善
+
+**目标**：补全剩余 P0 功能，达到最终完成定义。
+
+**范围**：Landing Page、Explore + OG、Settings + Billing、Admin、Followup API + FollowupBar、Share + Rate、国际化、剩余 E2E 测试（E02-E05）、部署到 Vercel、最终完成定义全部 checklist。
+
+**预估时间**：7-10 天
+
+#### Phase C Task Graph
+
+| Task | 名称 | 前置 | 完成标准 |
+|------|------|------|---------|
+| Task-016-rest | 前端剩余页面 | Task-016-core | Landing Page + Explore + Settings |
+| Task-017 | 管理后台 | Task-002, Task-007 | 模型健康 + 成本 + 安全 + Prompt 管理 |
+| Task-018 | Followup + 分享 + 评分 | Task-015-Web | 三种 followup + share slug + rate。**E03, E04** |
+| Task-019 | 辩论广场 + OG | Task-002 | SSR + Twitter Cards + OG 图片 |
+| Task-020 | 国际化 | Task-001 | 中英双语 + 6 命名空间 |
+| Task-021 | 全量测试 | Task-001 ~ Task-020 | U01-U20 + I01-I12 + E01-E06 + C01-C06 全部通过 |
+| Task-022 | 部署与最终验收 | Task-021 | 线上可访问 + 第二十三章最终完成定义全部 checklist |
+
+**执行顺序**：
+```
+Task-016-rest → Task-017 → Task-018 → Task-019 → Task-020 → Task-021 → Task-022
+```
+
+---
+
+## 二十三、技术债（MVP 刻意保留）
+
+| 债务 | MVP 做法 | 正确做法 | 不还后果 |
+|------|---------|---------|---------|
+| 讨论模式 | 硬编码 consensus | 可插拔引擎 | 加模式改核心代码 |
+| SSE | Vercel 120s | 独立服务+队列 | 超长断连 |
+| 书记员质检 | zod+降级 | 审查员A/B | 质量天花板 |
+| 逐chunk重放 | 状态恢复 | 事件表 | 断线丢中间输出 |
+| 搜索增强 | 不做 | 三层核查 | 事实不准 |
+| 文件处理 | 不做 | Tika/LibreOffice | 不能传PDF |
+| 知识图谱 | 不做 | pgvector | 无跨会话记忆 |
+| 匿名揭晓 | 不做 | reveal机制 | 用户不知谁说的 |
+| 测试 | 基础单元+手动 | E2E+chaos+prompt回归 | 改prompt无法量化 |
+| 安全 | 正则+PII基础 | ML分类器+WAF | 复杂攻击绕过 |
+
+---
+
+## 二十四、最终完成定义
+
+**只有以下全部满足才算完成**：
+
+- [ ] 所有 11 张表 migration 成功
+- [ ] 所有 4 条 prompt seed data 插入成功
+- [ ] billing_snapshot seed data 插入成功
+- [ ] Google OAuth 登录正常
+- [ ] 新用户自动获得 3+5 赠送额度
+- [ ] 单模型聊天可用（选模型 → 问 → 流式返回）
+- [ ] 可变模型对话可用（中途切换模型不丢上下文）
+- [ ] 召集议会可用（4 模型 3 轮共识模式完整跑通）
+- [ ] 匿名互评生效（第 2 轮无模型名）
+- [ ] 书记员总结生成（结构化 JSON 或降级纯文本）
+- [ ] 分歧矩阵可视化渲染正确
+- [ ] 计费 hold/release/settle 流水正确
+- [ ] 模型 timeout/skip 容错生效
+- [ ] SSE 断线 → restore 事件 → 前端恢复
+- [ ] can_stream=false → 前端 polling → 最终获取结果
+- [ ] Followup 三种模式可用
+- [ ] 辩论广场可浏览 + Twitter Cards 正确
+- [ ] 管理后台可看到模型健康 + 成本 + Prompt 管理
+- [ ] Landing Page 可访问
+- [ ] 所有 U01-U20 单元测试通过
+- [ ] 所有 I01-I12 集成测试通过
+- [ ] 所有 E01-E06 E2E 测试通过
+- [ ] 本地完整跑通：单模型 → 升级议会 → 总结 → followup 主流程
+
+---
+
+> **本文档是 Agora MVP 的唯一工程实现规格。不存在附录、不存在补丁文档、不存在双轨方案。每一条规则即是实现标准。Agent 按本文施工，不得自行推断核心语义。**
+
+---
+
+# 合并后的关键变更清单
+
+以下是 v3.2 相对于原 v3.1 的结构性变化：
+
+| # | 变更 | 说明 |
+|---|------|------|
+| 1 | **引入 `ActorContext`** | `runConsensusDiscussion` 参数从 `userId: string` 升级为 `actor: ActorContext`，支持 `source: 'cli' \| 'web' \| 'test'` 标记。core 层不再内部获取用户身份 |
+| 2 | **引入 `session-starter.ts`** | 执行锁获取 + orchestrator 启动从 API Route 内联逻辑抽取为 `src/lib/orchestrator/session-starter.ts`。CLI 和 Web 共用同一启动入口 |
+| 3 | **开发计划改为 Phase A1/A2/B/C 四阶段** | 替代原线性 Task Graph。A1 最小引擎闭环 → A2 工程化加固 → B Web 接入 → C 产品化 |
+| 4 | **Task-015 拆分为 CLI / Web 两层** | Task-015-CLI（Phase A2 产出）和 Task-015-Web（Phase B 产出）|
+| 5 | **新增 Phase A 任务组** | Task-001a（CLI 骨架）、Task-002a（session-starter）、Task-A1-E2E、Task-A2-chat、Task-A2-tools、Task-A2-event、Task-A2-test |
+| 6 | **引入 CLI 验证器章节** | CLI 命令清单、Go/No-Go 标准、非目标清单统一纳入第二十一章 |
+| 7 | **引入 Core / Renderer 分层铁律** | `src/lib/` 不得 import `src/cli/` 或 `src/app/`。显式化逻辑分层边界 |
+| 8 | **引入事件优先原则** | CLI stdout 和 Web SSE 都是同一事件流的渲染，不是独立输出通道 |
+| 9 | **引入 JSONL debug artifact 定位** | JSONL 明确为 CLI 阶段 debug 工具，canonical state 是 DB，Web 不依赖 JSONL |
+| 10 | **统一"唯一工程规格源"表述** | 消除所有"补丁/附录/双文档"语义 |
+| 11 | **引入 `handleFatalError` 收尾职责定义** | 明确其必须负责状态迁移、锁释放、账务收尾、执行记录终态 |
+| 12 | **新增 CLI 事件一致性测试** | CLI-E01：CLI 事件字段与 SSE 事件定义逐字段对齐 |
+| 13 | **技术栈增加 Phase A 最小子集** | 明确 Phase A 只需 commander/chalk/vitest/tsx，不引入 Next.js 等 |
+| 14 | **认证章节增加 CLI 阶段说明** | CLI 阶段用 `ActorContext { userId: env.CLI_TEST_USER_ID, source: 'cli' }` 跳过 OAuth |
+| 15 | **部署 env 增加 `CLI_TEST_USER_ID`** | Phase A 阶段必须的环境变量 |

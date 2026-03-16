@@ -54,12 +54,18 @@ describe('secretary', () => {
       async complete(_request: CompletionRequest) {
         return {
           text: JSON.stringify({
-            consensus: 'Proceed with a limited beta.',
-            disagreements: ['Timing for the public rollout remains debated.'],
-            recommendation: 'Start with an invite-only release.',
-            confidence: 0.81,
+            consensus: [
+              {
+                content: 'Proceed with a limited beta rollout.',
+                supporting_models: ['m1', 'm2'],
+                evidence_refs: ['round-1'],
+              },
+            ],
+            disagreements: [],
+            recommendation: 'Proceed with a limited beta rollout.',
+            confidence: 'medium',
             open_questions: ['How much support coverage is required?'],
-            evidence_refs: ['round-1', 'round-3'],
+            evidence_refs: ['round-1'],
           }),
           usage: { promptTokens: 120, completionTokens: 48 },
           finishReason: 'stop',
@@ -72,18 +78,15 @@ describe('secretary', () => {
       secretaryModelId: 'gpt-4o',
       topic: 'Launch strategy',
       context: 'Model A and Model B largely agree.',
+      participantModelIds: ['m1', 'm2'],
       promptStore,
       client,
       now: () => new Date('2026-03-17T00:00:00Z'),
     });
 
-    expect(summary.secretary_model).toBe('gpt-4o');
-    expect(summary.generated_at).toBe('2026-03-17T00:00:00.000Z');
-    expect(summary.token_usage).toEqual({
-      prompt_tokens: 120,
-      completion_tokens: 48,
-    });
-    expect(summary.raw_output.confidence).toBe(0.81);
+    expect(summary.confidence).toBe('medium');
+    expect(summary.disclaimer).toContain('AI 模拟审议');
+    expect(summary.is_degraded).toBe(false);
   });
 
   it('retries once when the first completion is invalid JSON', async () => {
@@ -122,10 +125,16 @@ describe('secretary', () => {
 
         return {
           text: JSON.stringify({
-            consensus: 'ok',
+            consensus: [
+              {
+                content: 'Proceed with a limited beta rollout.',
+                supporting_models: ['m1'],
+                evidence_refs: [],
+              },
+            ],
             disagreements: [],
-            recommendation: 'go',
-            confidence: 0.8,
+            recommendation: 'Proceed with a limited beta rollout.',
+            confidence: 'low',
             open_questions: [],
             evidence_refs: [],
           }),
@@ -140,11 +149,70 @@ describe('secretary', () => {
       secretaryModelId: 'gpt-4o',
       topic: 'A topic',
       context: 'A context',
+      participantModelIds: ['m1'],
       promptStore,
       client,
     });
 
     expect(callCount).toBe(2);
-    expect(summary.raw_output.recommendation).toBe('go');
+    expect(summary.recommendation).toBe('Proceed with a limited beta rollout.');
+  });
+
+  it('falls back to a degraded summary when semantic validation keeps failing', async () => {
+    const promptStore: PromptTemplateStore = {
+      async getActiveTemplate() {
+        return {
+          id: 'pt-1',
+          version: 'v1',
+          model: 'gpt-4o',
+          mode: 'summary',
+          role: 'secretary',
+          content: 'Summarize.',
+          isActive: true,
+        };
+      },
+    };
+    const client: OpenRouterClient = {
+      streamCompletion(): AsyncGenerator<never, CompletionResult, void> {
+        return createFinishedStream({
+          text: '',
+          usage: { promptTokens: 0, completionTokens: 0 },
+          finishReason: 'stop',
+        });
+      },
+      async complete() {
+        return {
+          text: JSON.stringify({
+            consensus: [
+              {
+                content: 'Proceed with the launch.',
+                supporting_models: ['unknown-model'],
+                evidence_refs: [],
+              },
+            ],
+            disagreements: [],
+            recommendation: 'Proceed with the launch carefully.',
+            confidence: 'high',
+            open_questions: [],
+            evidence_refs: [],
+          }),
+          usage: { promptTokens: 20, completionTokens: 10 },
+          finishReason: 'stop',
+        };
+      },
+    };
+
+    const summary = await runSecretarySummary({
+      discussionId: 'discussion-1',
+      secretaryModelId: 'gpt-4o',
+      topic: 'A topic',
+      context: 'A context',
+      participantModelIds: ['m1'],
+      promptStore,
+      client,
+    });
+
+    expect(summary.is_degraded).toBe(true);
+    expect(summary.open_questions[0]).toContain('unknown supporting model');
   });
 });

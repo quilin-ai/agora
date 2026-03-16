@@ -1,26 +1,61 @@
-/**
- * Secretary 输出类型（CORE_SPEC §11）
- *
- * Secretary 必须输出结构化 JSON，遵守固定 schema。
- * 禁止额外 markdown 或说明文字。
- */
+export interface ConsensusPoint {
+  content: string;
+  supporting_models: string[];
+  evidence_refs: string[];
+}
+
+export interface DisagreementPosition {
+  model_id: string;
+  stance: 'for' | 'against' | 'neutral';
+  summary: string;
+}
+
+export interface DisagreementPoint {
+  topic: string;
+  type: 'fact_conflict' | 'context_gap' | 'logic_divergence' | 'preference_difference';
+  positions: DisagreementPosition[];
+  severity: 'high' | 'medium' | 'low';
+}
 
 export interface SecretaryRawOutput {
-  consensus: string;
-  disagreements: string[];
+  consensus: ConsensusPoint[];
+  disagreements: DisagreementPoint[];
   recommendation: string;
-  confidence: number;
+  confidence: 'high' | 'medium' | 'low';
   open_questions: string[];
   decision_boundary?: string;
   evidence_refs: string[];
 }
 
 export interface DiscussionSummaryFinal {
-  raw_output: SecretaryRawOutput;
-  generated_at: string;
-  secretary_model: string;
-  token_usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-  };
+  consensus: ConsensusPoint[];
+  disagreements: DisagreementPoint[];
+  recommendation: string;
+  confidence: 'high' | 'medium' | 'low';
+  open_questions: string[];
+  decision_boundary?: string;
+  evidence_refs: string[];
+  disclaimer: string;
+  is_degraded: boolean;
+}
+
+export interface CompressedRoundState {
+  round: number;
+  model_positions: Array<{
+    logical_model_id: string;
+    core_stance: string;
+    key_evidence: string[];
+    challenged_by: string[];
+    conceded_points: string[];
+  }>;
+  unresolved_conflicts: string[];
+  new_information: string[];
+  must_answer_in_next_round: string[];
+}
+
+export interface ModelFailureRecord {
+  logical_model_id: string;
+  actual_model_id: string | null;
+  error_type: string;
+  action: 'retrying' | 'degraded' | 'skipped';
 }

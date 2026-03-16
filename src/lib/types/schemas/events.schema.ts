@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-import { billingCostSchema } from './billing.schema';
-import { discussionStatusSchema } from './discussion.schema';
+import { messageSchema } from './discussion.schema';
 import { discussionSummaryFinalSchema } from './secretary.schema';
 
 export const sseEventTypeSchema = z.enum([
@@ -18,148 +17,180 @@ export const sseEventTypeSchema = z.enum([
   'interrupt_ack',
 ]);
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const progressEventSchema = z
   .object({
     type: z.literal('progress'),
     data: z
       .object({
-        discussion_id: z.string(),
         round: z.number(),
+        total_rounds: z.number(),
         phase: z.string(),
+        seq: z.number(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const chunkEventSchema = z
   .object({
     type: z.literal('chunk'),
     data: z
       .object({
-        discussion_id: z.string(),
-        model_id: z.string(),
-        text: z.string(),
+        logical_model_id: z.string(),
+        actual_model_id: z.string(),
+        round: z.number(),
+        content: z.string(),
+        done: z.boolean(),
+        seq: z.number(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const modelDoneEventSchema = z
   .object({
     type: z.literal('model_done'),
     data: z
       .object({
-        discussion_id: z.string(),
-        model_id: z.string(),
-        tokens: z.number(),
+        logical_model_id: z.string(),
+        actual_model_id: z.string(),
+        round: z.number(),
+        tokens: z
+          .object({
+            input: z.number(),
+            output: z.number(),
+          })
+          .strict(),
+        seq: z.number(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const modelErrorEventSchema = z
   .object({
     type: z.literal('model_error'),
     data: z
       .object({
-        discussion_id: z.string(),
-        model_id: z.string(),
-        error_message: z.string(),
+        logical_model_id: z.string(),
+        actual_model_id: z.string().nullable(),
+        round: z.number(),
+        error_type: z.string(),
+        action: z.enum(['skipped', 'retrying', 'degraded']),
+        degraded_to: z.string().nullable(),
+        message: z.string(),
+        seq: z.number(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const roundDoneEventSchema = z
   .object({
     type: z.literal('round_done'),
     data: z
       .object({
-        discussion_id: z.string(),
         round: z.number(),
+        completed_models: z.array(z.string()),
+        skipped_models: z.array(z.string()),
+        failed_models: z.array(
+          z
+            .object({
+              logical_model_id: z.string(),
+              actual_model_id: z.string().nullable(),
+              error_type: z.string(),
+              action: z.enum(['retrying', 'degraded', 'skipped']),
+            })
+            .strict()
+        ),
+        total_models: z.number(),
+        seq: z.number(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const anonymizeEventSchema = z
   .object({
     type: z.literal('anonymize'),
     data: z
       .object({
-        discussion_id: z.string(),
+        round: z.number(),
         labels: z.array(z.string()),
+        seq: z.number(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const summaryEventSchema = z
   .object({
     type: z.literal('summary'),
-    data: z
-      .object({
-        discussion_id: z.string(),
-        summary: discussionSummaryFinalSchema,
-      })
-      .strict(),
+    data: discussionSummaryFinalSchema.extend({
+      seq: z.number(),
+    }).strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const doneEventSchema = z
   .object({
     type: z.literal('done'),
     data: z
       .object({
-        discussion_id: z.string(),
-        billing: billingCostSchema,
+        total_raw_cost: z.number(),
+        total_platform_price: z.number(),
+        seq: z.number(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const restoreEventSchema = z
   .object({
     type: z.literal('restore'),
     data: z
       .object({
-        discussion_id: z.string(),
-        status: discussionStatusSchema,
+        resume_mode: z.literal('state_restore'),
+        can_stream: z.boolean(),
+        current_status: z.enum([
+          'created',
+          'streaming',
+          'summarizing',
+          'completed',
+          'failed',
+          'aborted',
+        ]),
+        current_round: z.number(),
         last_completed_round: z.number(),
+        completed_round_messages: z.array(messageSchema),
+        summary: discussionSummaryFinalSchema.nullable(),
+        error_code: z.string().optional(),
+        error_message: z.string().optional(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const errorEventSchema = z
   .object({
     type: z.literal('error'),
     data: z
       .object({
-        discussion_id: z.string(),
-        error_message: z.string(),
+        code: z.string(),
+        message: z.string(),
       })
       .strict(),
   })
   .strict();
 
-// GAP: payload 结构待确认 — 以下 payload 基于 CLI 渲染建议推导，非冻结协议
 export const interruptAckEventSchema = z
   .object({
     type: z.literal('interrupt_ack'),
     data: z
       .object({
-        discussion_id: z.string(),
+        status: z.literal('acknowledged'),
+        message: z.string(),
+        seq: z.number(),
       })
       .strict(),
   })

@@ -1,4 +1,5 @@
 import type { BillingCost, DiscussionStatus, DiscussionSummaryFinal, SSEEvent } from '@/lib/types';
+import { toDoneEventData, toRestoreEventData } from '@/lib/types';
 import { sseEventSchema } from '@/lib/types/schemas';
 
 import type { StreamHub } from './types';
@@ -8,74 +9,138 @@ function emitValidatedEvent(onEvent: (event: SSEEvent) => void, event: SSEEvent)
 }
 
 export function createStreamHub(onEvent: (event: SSEEvent) => void): StreamHub {
+  let seq = 0;
+
+  function nextSeq(): number {
+    seq += 1;
+    return seq;
+  }
+
   return {
     emit(event) {
       emitValidatedEvent(onEvent, event);
     },
     progress(discussionId: string, round: number, phase: string) {
+      void discussionId;
       emitValidatedEvent(onEvent, {
         type: 'progress',
-        data: { discussion_id: discussionId, round, phase },
+        data: { round, total_rounds: 3, phase, seq: nextSeq() },
       });
     },
-    chunk(discussionId: string, modelId: string, text: string) {
+    chunk(params) {
+      void params.discussionId;
       emitValidatedEvent(onEvent, {
         type: 'chunk',
-        data: { discussion_id: discussionId, model_id: modelId, text },
+        data: {
+          logical_model_id: params.logicalModelId,
+          actual_model_id: params.actualModelId,
+          round: params.round,
+          content: params.text,
+          done: params.done ?? false,
+          seq: nextSeq(),
+        },
       });
     },
-    modelDone(discussionId: string, modelId: string, tokens: number) {
+    modelDone(params) {
+      void params.discussionId;
       emitValidatedEvent(onEvent, {
         type: 'model_done',
-        data: { discussion_id: discussionId, model_id: modelId, tokens },
+        data: {
+          logical_model_id: params.logicalModelId,
+          actual_model_id: params.actualModelId,
+          round: params.round,
+          tokens: {
+            input: params.inputTokens,
+            output: params.outputTokens,
+          },
+          seq: nextSeq(),
+        },
       });
     },
-    modelError(discussionId: string, modelId: string, errorMessage: string) {
+    modelError(params) {
+      void params.discussionId;
       emitValidatedEvent(onEvent, {
         type: 'model_error',
-        data: { discussion_id: discussionId, model_id: modelId, error_message: errorMessage },
+        data: {
+          logical_model_id: params.logicalModelId,
+          actual_model_id: params.actualModelId,
+          round: params.round,
+          error_type: params.errorType,
+          action: params.action,
+          degraded_to: params.degradedTo ?? null,
+          message: params.message,
+          seq: nextSeq(),
+        },
       });
     },
-    roundDone(discussionId: string, round: number) {
+    roundDone(params) {
+      void params.discussionId;
       emitValidatedEvent(onEvent, {
         type: 'round_done',
-        data: { discussion_id: discussionId, round },
+        data: {
+          round: params.round,
+          completed_models: params.completedModels,
+          skipped_models: params.skippedModels,
+          failed_models: params.failedModels,
+          total_models: params.totalModels,
+          seq: nextSeq(),
+        },
       });
     },
-    anonymize(discussionId: string, labels: string[]) {
+    anonymize(discussionId: string, round: number, labels: string[]) {
+      void discussionId;
       emitValidatedEvent(onEvent, {
         type: 'anonymize',
-        data: { discussion_id: discussionId, labels },
+        data: { round, labels, seq: nextSeq() },
       });
     },
     summary(discussionId: string, summary: DiscussionSummaryFinal) {
+      void discussionId;
       emitValidatedEvent(onEvent, {
         type: 'summary',
-        data: { discussion_id: discussionId, summary },
+        data: {
+          ...summary,
+          seq: nextSeq(),
+        },
       });
     },
     done(discussionId: string, billing: BillingCost) {
+      void discussionId;
       emitValidatedEvent(onEvent, {
         type: 'done',
-        data: { discussion_id: discussionId, billing },
+        data: toDoneEventData(billing, nextSeq()),
       });
     },
     restore(discussionId: string, status: DiscussionStatus, lastCompletedRound: number) {
       emitValidatedEvent(onEvent, {
         type: 'restore',
-        data: { discussion_id: discussionId, status, last_completed_round: lastCompletedRound },
+        data: toRestoreEventData({
+          status,
+          currentRound: lastCompletedRound,
+          lastCompletedRound,
+        }),
       });
+      void discussionId;
     },
     error(discussionId: string, errorMessage: string) {
+      void discussionId;
       emitValidatedEvent(onEvent, {
         type: 'error',
-        data: { discussion_id: discussionId, error_message: errorMessage },
+        data: {
+          code: 'ORCHESTRATOR_ERROR',
+          message: errorMessage,
+        },
       });
     },
     interruptAck(discussionId: string) {
+      void discussionId;
       emitValidatedEvent(onEvent, {
         type: 'interrupt_ack',
-        data: { discussion_id: discussionId },
+        data: {
+          status: 'acknowledged',
+          message: 'Interrupt accepted for the next round.',
+          seq: nextSeq(),
+        },
       });
     },
   };

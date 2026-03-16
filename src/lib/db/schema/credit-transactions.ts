@@ -1,8 +1,8 @@
-import { numeric, pgTable, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { billingSnapshots } from './billing-snapshots';
-import { creditTransactionTypeEnum } from './enums';
-import { discussions } from './discussions';
+import { conversations } from './conversations';
+import type { CreditTransactionTypeValue } from './enums';
 import { users } from './users';
 
 export const creditTransactions = pgTable('credit_transactions', {
@@ -10,12 +10,18 @@ export const creditTransactions = pgTable('credit_transactions', {
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id),
-  discussionId: uuid('discussion_id').references(() => discussions.id),
-  type: creditTransactionTypeEnum('type').notNull(),
-  amountRaw: numeric('amount_raw', { precision: 20, scale: 8 }).notNull(),
-  amountPlatform: numeric('amount_platform', { precision: 20, scale: 8 }).notNull(),
-  billingSnapshotId: uuid('billing_snapshot_id')
-    .notNull()
-    .references(() => billingSnapshots.id),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+  type: text('type').$type<CreditTransactionTypeValue>().notNull(),
+  amount: numeric('amount', { precision: 10, scale: 4 }).notNull(),
+  affectsBalance: boolean('affects_balance').notNull().default(true),
+  balanceAfter: numeric('balance_after', { precision: 10, scale: 4 }).notNull(),
+  rawCostRef: numeric('raw_cost_ref', { precision: 10, scale: 6 }),
+  conversationId: uuid('conversation_id').references(() => conversations.id),
+  description: text('description'),
+  stripePaymentId: text('stripe_payment_id'),
+  idempotencyKey: text('idempotency_key').unique(),
+  billingSnapshotId: uuid('billing_snapshot_id').references(() => billingSnapshots.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+  index('idx_credit_user').on(table.userId),
+  index('idx_credit_created').on(table.createdAt.desc()),
+]);

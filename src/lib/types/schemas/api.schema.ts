@@ -1,19 +1,21 @@
 import { z } from 'zod';
 
-import { discussionStatusSchema } from './discussion.schema';
-
 export const createDiscussionRequestSchema = z
   .object({
     topic: z.string().min(1),
-    model_ids: z.array(z.string()).min(2),
-    conversation_id: z.string().uuid().optional(),
+    models: z.array(z.string()).optional(),
+    mode: z.literal('consensus').optional(),
+    max_rounds: z.literal(3).optional(),
+    idempotency_key: z.string().min(1),
   })
   .strict();
 
 export const createDiscussionResponseSchema = z
   .object({
-    discussion_id: z.string(),
-    conversation_id: z.string(),
-    status: discussionStatusSchema,
+    id: z.string(),
+    status: z.literal('created'),
+    estimated_raw_cost: z.number(),
+    held_platform_amount: z.number(),
+    stream_url: z.string(),
   })
   .strict();

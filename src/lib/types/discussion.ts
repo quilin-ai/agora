@@ -1,8 +1,5 @@
-/**
- * Discussion 生命周期相关类型（CORE_SPEC §5）
- */
+import type { DiscussionSummaryFinal } from './secretary';
 
-/** Discussion 持久状态 — 6 个值，不得新增 */
 export type DiscussionStatus =
   | 'created'
   | 'streaming'
@@ -11,25 +8,20 @@ export type DiscussionStatus =
   | 'failed'
   | 'aborted';
 
-/** 终态 — completed / failed / aborted 不允许迁移到任何新状态 */
+export type ConversationStatus = DiscussionStatus;
+
 export type TerminalStatus = 'completed' | 'failed' | 'aborted';
 
-/** 轮次类型 */
+export type ConversationType = 'chat' | 'council';
+export type ConversationMode = 'consensus';
+export type ConversationVisibility = 'private' | 'public';
+export type MessageRole = 'user' | 'assistant' | 'system';
+
 export type RoundType = 'independent' | 'review' | 'rebuttal';
-
-/** 轮次编号 — 1/2/3 */
 export type RoundNumber = 1 | 2 | 3;
-
-/** 轮次状态 */
 export type RoundStatus = 'pending' | 'running' | 'completed' | 'failed';
-
-/** 执行锁状态 */
 export type ExecutionStatus = 'running' | 'completed' | 'failed';
 
-/**
- * 状态迁移白名单（CORE_SPEC §5）
- * 所有状态更新必须基于此白名单做 CAS，禁止覆盖终态。
- */
 export type DiscussionTransition =
   | { from: 'created'; to: 'streaming' }
   | { from: 'created'; to: 'aborted' }
@@ -40,3 +32,36 @@ export type DiscussionTransition =
   | { from: 'streaming'; to: 'aborted' }
   | { from: 'summarizing'; to: 'completed' }
   | { from: 'summarizing'; to: 'failed' };
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  role: MessageRole;
+  logical_model_id?: string | null;
+  actual_model_id?: string | null;
+  round?: number | null;
+  anonymous_label?: string | null;
+  content: string;
+  status?: string | null;
+  created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  user_id: string;
+  type: ConversationType;
+  mode: string;
+  status: ConversationStatus;
+  current_round: number;
+  last_completed_round: number;
+  models: string[];
+  title: string | null;
+  topic: string | null;
+  summary: DiscussionSummaryFinal | null;
+  visibility: string;
+  share_slug: string | null;
+  total_platform_price: number;
+  user_rating: number | null;
+  created_at: string;
+  updated_at: string;
+}
