@@ -55,15 +55,19 @@
 
 ## 2. Technical Baseline
 
-- Framework: Next.js 15 (App Router)
-- Language: TypeScript strict mode
+- Framework: Next.js 16 (App Router)
+- Language: TypeScript 5.9 strict mode
+- Runtime: Node.js 22
 - DB: PostgreSQL (Supabase)
-- ORM: Drizzle ORM
+- ORM: Drizzle ORM 0.45
 - Auth: NextAuth v5 / Auth.js
 - Gateway: OpenRouter
 - Streaming: SSE
-- Validation: zod
-- State: Zustand
+- Validation: Zod 4
+- State: Zustand 5
+- Lint: ESLint 10 + typescript-eslint
+- Test: Vitest 4
+- Package Manager: pnpm 9
 - Deploy: Vercel + Supabase
 
 ### 不采用

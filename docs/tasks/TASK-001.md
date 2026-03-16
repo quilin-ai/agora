@@ -3,7 +3,7 @@
 > 阶段：Phase A1
 > 优先级：P0
 > 前置依赖：无
-> 目标：建立 Next.js 15 + TypeScript strict + Drizzle ORM 的工程骨架，为后续所有任务提供可编译、可 lint、可测试的基础环境。
+> 目标：建立 Next.js 16 + TypeScript strict + Drizzle ORM 的工程骨架，为后续所有任务提供可编译、可 lint、可测试的基础环境。
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 1. Goal
 
-一个最小可编译、可 lint、可测试的 Next.js 15 + TypeScript strict 项目骨架。
+一个最小可编译、可 lint、可测试的 Next.js 16 + TypeScript strict 项目骨架。
 
 ### 任务完成后，应具备的能力
 - `pnpm install` 成功
@@ -40,7 +40,7 @@
 
 - `package.json` — 项目元信息、scripts、dependencies
 - `tsconfig.json` — TypeScript strict mode 配置
-- `next.config.ts` — Next.js 15 App Router 基础配置
+- `next.config.ts` — Next.js 16 App Router 基础配置
 - `drizzle.config.ts` — Drizzle ORM 连接配置（读环境变量）
 - `.env.example` — 环境变量模板
 - `eslint.config.mjs` — ESLint 配置
@@ -136,7 +136,7 @@ src/cli/commands/
 
 - `strict: true`
 - `target`: ES2022 或更高
-- `module`: 与 Next.js 15 兼容
+- `module`: 与 Next.js 16 兼容
 - path alias：`@/` -> `src/`
 
 ### 5.3 Drizzle 配置
@@ -196,13 +196,16 @@ NEXTAUTH_URL=http://localhost:3000
 - 依赖版本必须与 CORE_SPEC §2 技术选型一致
 
 ### 技术选型约束
-- Framework: Next.js 15 (App Router)
-- Language: TypeScript strict
+- Framework: Next.js 16 (App Router)
+- Language: TypeScript 5.9 strict
+- Runtime: Node.js 22
 - DB driver: postgres (for Drizzle)
-- ORM: Drizzle ORM
-- Validation: zod
-- State: zustand
-- Test: Vitest
+- ORM: Drizzle ORM 0.45
+- Validation: Zod 4
+- State: Zustand 5
+- Lint: ESLint 10 + typescript-eslint
+- Test: Vitest 4
+- Package Manager: pnpm 9
 
 ---
 
@@ -272,6 +275,6 @@ pnpm build
 ## 12. Stop Conditions
 
 遇到以下情况必须停止实现并报 gap：
-- Next.js 15 与指定依赖存在不兼容
+- Next.js 16 与指定依赖存在不兼容
 - Drizzle ORM 与 postgres 驱动版本冲突
 - 技术选型与 CORE_SPEC §2 存在矛盾
