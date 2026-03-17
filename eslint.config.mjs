@@ -38,6 +38,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/', '.next/', 'drizzle/', 'bin/', '*.config.*'],
+    ignores: ['node_modules/', '.next/', 'drizzle/', 'bin/', '*.config.*', 'next-env.d.ts'],
   },
 ];

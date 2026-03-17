@@ -100,25 +100,31 @@ JSONL 边界：
 
 最终 MVP 技术栈：
 
-- Next.js 15 (App Router)
-- TypeScript strict mode
+- Next.js 16 (App Router), 当前基线 `next@^16.1.7`
+- TypeScript strict mode, 当前基线 `typescript@^5.9.3`
 - PostgreSQL (Supabase)
-- Drizzle ORM
+- Drizzle ORM, 当前基线 `drizzle-orm@^0.45.1` / `drizzle-kit@^0.31.9`
 - NextAuth v5 / Auth.js
 - OpenRouter
 - SSE
-- Zod
-- Zustand
+- Zod, 当前基线 `zod@^4.3.6`
+- Zustand, 当前基线 `zustand@^5.0.12`
 - next-intl
 
 Phase A 最小技术栈：
 
-- commander
-- chalk
-- tsx
-- vitest
+- commander `@^14.0.3`
+- chalk `@^5.6.2`
+- tsx `@^4.21.0`
+- vitest `@^4.1.0`
 - PostgreSQL / Drizzle / OpenRouter / Zod
 - Phase A 不引入 Next.js / React / Tailwind / shadcn / NextAuth
+
+版本约定：
+
+- 运行时默认跟随当前最新稳定 LTS：当前 Node 基线 `24.14.0`
+- 包管理器默认跟随当前最新稳定版本：当前 pnpm 基线 `10.32.1`
+- 仓库依赖默认采用当前最新稳定正式版，不主动降到旧 major
 
 ---
 

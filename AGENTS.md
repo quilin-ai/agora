@@ -6,6 +6,13 @@ This repository uses `技术文档.md` as the current source of truth for produc
 
 When working with tasks, specs, progress files, and implementation sequencing, always align naming, references, and execution order to `技术文档.md`.
 
+Version policy:
+
+- default to the latest stable release line for runtime, framework, and core dependencies
+- do not intentionally downgrade to an older major just to match historical docs
+- keep `package.json`, lockfile, `.nvmrc`, specs, and task docs on the same version baseline
+- use the latest stable LTS line for Node runtime
+
 ---
 
 ## Task Naming Rules

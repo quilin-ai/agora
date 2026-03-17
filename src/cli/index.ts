@@ -1,16 +1,36 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { fileURLToPath } from 'node:url';
 
-import { registerCouncilRunCommand } from './commands/council-run';
+import { registerAskCommand } from './commands/ask';
+import { registerCouncilCommands } from './commands/council-run';
 
-const program = new Command();
+export function createProgram(): Command {
+  const program = new Command();
 
-program
-  .name('agora')
-  .description('Agora MVP — CLI-first council discussion engine')
-  .version('0.1.0');
+  program
+    .name('agora')
+    .description('Agora MVP — CLI-first council discussion engine')
+    .version('0.1.0');
 
-registerCouncilRunCommand(program);
+  registerAskCommand(program);
+  registerCouncilCommands(program);
 
-program.parse();
+  return program;
+}
+
+function isCliEntrypoint(): boolean {
+  const entryArg = process.argv[1];
+
+  if (!entryArg) {
+    return false;
+  }
+
+  return fileURLToPath(import.meta.url) === entryArg;
+}
+
+if (isCliEntrypoint()) {
+  const program = createProgram();
+  program.parse();
+}
