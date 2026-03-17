@@ -30,6 +30,10 @@ yarn-error.log*
 
 # env files
 .env
+.env.test
+.env.prod
+.env.test.local
+.env.prod.local
 .env*.local
 
 # vercel

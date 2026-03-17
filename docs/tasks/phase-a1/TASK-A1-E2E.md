@@ -14,6 +14,7 @@
 
 - `agora ask`
 - `agora council run`
+- 环境白名单模型选择
 - 3 轮讨论
 - 匿名互评
 - Secretary 总结
@@ -27,6 +28,7 @@
 必须验证：
 
 - `session-starter → orchestrator → 3 rounds → secretary → done`
+- `AGORA_ALLOWED_MODELS` / `AGORA_DEFAULT_COUNCIL_MODELS` / `AGORA_SECRETARY_MODEL` 生效
 - 状态机迁移
 - JSONL 不是 canonical state
 - 重复启动保护
@@ -36,7 +38,7 @@
 
 ## 3. Acceptance Criteria
 
-1. `agora council run` 完整跑通
+1. `agora council run` 以环境默认模型完整跑通（test 默认 3 个参与模型）
 2. G01 / G03 / G05-G09 / G11 / G13 / G14 / G17 满足
 3. Phase A1 无未解决 blocker
 

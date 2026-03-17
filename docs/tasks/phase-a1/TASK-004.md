@@ -26,6 +26,7 @@
 必须完成：
 
 - `src/lib/openrouter/client.ts`
+- 基于环境变量的模型白名单读取与默认模型解析
 - 常量导出
 - 流式与非流式调用
 - 错误处理
@@ -43,7 +44,8 @@
 1. 单模型调用可用
 2. 流式输出可消费
 3. token / raw cost 基础数据可读
-4. `pnpm lint` / `pnpm typecheck` / `pnpm test` 通过
+4. `AGORA_ALLOWED_MODELS` / `AGORA_DEFAULT_COUNCIL_MODELS` / `AGORA_SECRETARY_MODEL` 可被统一读取
+5. `pnpm lint` / `pnpm typecheck` / `pnpm test` 通过
 
 ---
 

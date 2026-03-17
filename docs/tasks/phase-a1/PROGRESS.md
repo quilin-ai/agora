@@ -4,19 +4,20 @@
 
 Phase A1 对应 [`技术文档.md`](../../../技术文档.md) 第二十二章的“最小引擎闭环验证”。
 
-这一阶段的目标不是补 UI，也不是做 Web 壳，而是用最少代码跑通单模型问答和 4 模型议会讨论的核心链路，验证引擎、状态机、SSE 事件和持久化语义。
+这一阶段的目标不是补 UI，也不是做 Web 壳，而是用最少代码跑通单模型问答和环境默认模型议会讨论的核心链路，验证引擎、状态机、SSE 事件和持久化语义。
 
 ## Goals
 
 - 跑通 `agora ask`
 - 跑通 `agora council run`
+- 验证环境白名单和默认模型选择
 - 完成 3 轮讨论、匿名互评、Secretary 总结
 - 验证状态机、执行锁、恢复语义、JSONL 事件日志和 DB 持久化
 
 ## Deliverables
 
 - `agora ask` 可运行
-- `agora council run` 可运行
+- `agora council run` 可运行（test 环境默认 3 个参与模型）
 - Phase A1 所需核心模块落地：schema、OpenRouter、安全层、orchestrator、stream-hub、anonymizer、secretary、context-manager、session-starter、CLI 骨架
 - `Task-A1-E2E` 验收通过
 

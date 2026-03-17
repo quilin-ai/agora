@@ -29,6 +29,8 @@
 - 最新稳定版本基线（当前：Node 24 LTS / pnpm 10 / Next.js 16）
 - `src/lib/`、`src/cli/`、`src/app/` 基础目录
 - Drizzle 与数据库连接基础
+- `run.sh` 环境切换脚本
+- `.env.test.example` / `.env.prod.example` 环境模板
 - 基础脚本：`dev/build/lint/typecheck/test`
 
 本任务不做：
@@ -46,6 +48,9 @@
 package.json
 tsconfig.json
 eslint config
+run.sh
+.env.test.example
+.env.prod.example
 src/lib/
 src/cli/
 src/app/

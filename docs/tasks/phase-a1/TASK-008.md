@@ -18,6 +18,7 @@
 - CAS 更新
 - 执行锁
 - 3 轮共识主路径
+- 按环境默认模型集执行主流程（test 环境默认 3 个参与模型）
 - `canContinue()`
 - 与 StreamHub / Anonymizer / Secretary / ContextManager 的接口接线点
 
