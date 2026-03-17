@@ -45,11 +45,19 @@ describe('db schema exports', () => {
       'aborted',
     ]);
     expect(roundTypes).toEqual(['independent', 'review', 'rebuttal']);
-    expect(roundStatuses).toEqual(['pending', 'running', 'completed', 'failed']);
-    expect(executionStatuses).toEqual(['running', 'completed', 'failed']);
-    expect(creditTransactionTypes).toEqual(['hold', 'release', 'refund', 'settle']);
+    expect(roundStatuses).toEqual(['completed', 'partial', 'failed']);
+    expect(executionStatuses).toEqual(['started', 'completed', 'failed', 'timeout']);
+    expect(creditTransactionTypes).toEqual([
+      'hold',
+      'settle',
+      'release',
+      'refund',
+      'grant',
+      'purchase',
+      'monthly_reset',
+    ]);
     expect(conversationTypes).toEqual(['chat', 'council']);
-    expect(messageRoles).toEqual(['user', 'assistant', 'system']);
+    expect(messageRoles).toEqual(['user', 'assistant', 'secretary', 'system']);
   });
 
   it('exposes v3.2 frozen fields on conversations', () => {

@@ -3,7 +3,7 @@
 > 阶段：Phase A1
 > 优先级：P0
 > 前置依赖：Task-001
-> 真相源：`Agora-MVP-统一工程规格-v3.2` 第二十一、二十二章
+> 真相源：`技术文档.md` 第二十一、二十二章
 > 目标：建立 CLI 骨架和 JSONL 事件日志能力，为 `agora ask` / `agora council run` / replay 打底。
 
 ---

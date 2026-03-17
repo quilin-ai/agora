@@ -3,7 +3,7 @@
 > 阶段：Phase A1
 > 优先级：P0
 > 前置依赖：Task-004
-> 真相源：`Agora-MVP-统一工程规格-v3.2` 第八章、第十二章、第二十二章
+> 真相源：`技术文档.md` 第八章、第十二章、第二十二章
 > 目标：产出并验证 `CompressedRoundState`，为 Round 3 与 Secretary 提供压缩后的高保真上下文。
 
 ---

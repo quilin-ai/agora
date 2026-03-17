@@ -1,4 +1,4 @@
-import type { BillingCost, DiscussionStatus, DiscussionSummaryFinal, RoundType, SSEEvent } from '@/lib/types';
+import type { BillingCost, DiscussionStatus, DiscussionSummaryFinal, SSEEvent } from '@/lib/types';
 import type { ModelFailureRecord } from '@/lib/types';
 
 export interface DiscussionRuntimeRecord {
@@ -24,8 +24,7 @@ export interface RoundModelResponse {
 export interface RoundPersistenceRecord {
   discussionId: string;
   roundNumber: number;
-  roundType: RoundType;
-  status: 'running' | 'completed' | 'failed';
+  status: 'completed' | 'partial' | 'failed';
   modelResponses: RoundModelResponse[];
   failedModels?: ModelFailureRecord[];
   startedAt?: Date;
@@ -38,6 +37,7 @@ export interface PromptTemplateRecord {
   model: string;
   mode: string;
   role: string;
+  roundType: string;
   content: string;
   isActive: boolean;
 }
@@ -46,6 +46,7 @@ export interface PromptTemplateLookup {
   modelId: string;
   mode: string;
   role: string;
+  roundType: string;
 }
 
 export interface PromptTemplateStore {
@@ -94,6 +95,7 @@ export interface DiscussionStateUpdates {
   completedAt?: Date;
   failedAt?: Date;
   abortedAt?: Date;
+  executionStartedAt?: Date;
   errorCode?: string | null;
   errorMessage?: string | null;
 }
@@ -108,7 +110,7 @@ export interface DiscussionStateStore {
 }
 
 export interface LockReleaseInput {
-  status?: 'completed' | 'failed';
+  status?: 'completed' | 'failed' | 'timeout';
   errorCode?: string | null;
   errorMessage?: string | null;
 }
@@ -183,7 +185,12 @@ export interface StreamHub {
   anonymize(discussionId: string, round: number, labels: string[]): void;
   summary(discussionId: string, summary: DiscussionSummaryFinal): void;
   done(discussionId: string, billing: BillingCost): void;
-  restore(discussionId: string, status: DiscussionStatus, lastCompletedRound: number): void;
+  restore(
+    discussionId: string,
+    status: DiscussionStatus,
+    currentRound: number,
+    lastCompletedRound: number
+  ): void;
   error(discussionId: string, errorMessage: string): void;
   interruptAck(discussionId: string): void;
 }
@@ -201,7 +208,7 @@ export interface ContextSection {
 export class PromptTemplateMissingError extends Error {
   constructor(readonly lookup: PromptTemplateLookup) {
     super(
-      `Missing active prompt template for model=${lookup.modelId} mode=${lookup.mode} role=${lookup.role}`
+      `Missing active prompt template for model=${lookup.modelId} mode=${lookup.mode} role=${lookup.role} roundType=${lookup.roundType}`
     );
     this.name = 'PromptTemplateMissingError';
   }

@@ -3,7 +3,14 @@
  */
 
 /** 计费流水类型 */
-export type CreditTransactionType = 'hold' | 'release' | 'refund' | 'settle';
+export type CreditTransactionType =
+  | 'hold'
+  | 'settle'
+  | 'release'
+  | 'refund'
+  | 'grant'
+  | 'purchase'
+  | 'monthly_reset';
 
 /**
  * 计费成本

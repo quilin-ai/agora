@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, max } from 'drizzle-orm';
 
 import type { ExecutionLockStore, LockReleaseInput } from './types';
 
@@ -29,30 +29,38 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
   return {
     async acquireLock(discussionId: string, lockHolder: string) {
       return db.transaction(async (tx) => {
-        await tx.execute(
-          sql`select ${schema.conversations.id} from ${schema.conversations} where ${schema.conversations.id} = ${discussionId} for update`
-        );
-
-        const active = await tx
-          .select({ id: schema.discussionExecutions.id })
-          .from(schema.discussionExecutions)
+        const lockedDiscussion = await tx
+          .update(schema.conversations)
+          .set({
+            executionLockToken: lockHolder,
+            executionLockAt: new Date(),
+            updatedAt: new Date(),
+          })
           .where(
             and(
-              eq(schema.discussionExecutions.conversationId, discussionId),
-              eq(schema.discussionExecutions.status, 'running'),
-              isNull(schema.discussionExecutions.completedAt)
+              eq(schema.conversations.id, discussionId),
+              eq(schema.conversations.status, 'created'),
+              isNull(schema.conversations.executionLockToken)
             )
           )
-          .limit(1);
+          .returning({ id: schema.conversations.id });
 
-        if (active.length > 0) {
+        if (lockedDiscussion.length === 0) {
           return false;
         }
 
+        const attempts = await tx
+          .select({ maxAttempt: max(schema.discussionExecutions.attempt) })
+          .from(schema.discussionExecutions)
+          .where(eq(schema.discussionExecutions.conversationId, discussionId));
+
+        const nextAttempt = Number(attempts[0]?.maxAttempt ?? 0) + 1;
+
         await tx.insert(schema.discussionExecutions).values({
           conversationId: discussionId,
+          attempt: nextAttempt,
           lockToken: lockHolder,
-          status: 'running',
+          status: 'started',
         });
 
         return true;
@@ -60,10 +68,6 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
     },
     async releaseLock(discussionId: string, lockHolder: string, input?: LockReleaseInput) {
       return db.transaction(async (tx) => {
-        await tx.execute(
-          sql`select ${schema.conversations.id} from ${schema.conversations} where ${schema.conversations.id} = ${discussionId} for update`
-        );
-
         const active = await tx
           .select({ id: schema.discussionExecutions.id })
           .from(schema.discussionExecutions)
@@ -71,7 +75,7 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
             and(
               eq(schema.discussionExecutions.conversationId, discussionId),
               eq(schema.discussionExecutions.lockToken, lockHolder),
-              eq(schema.discussionExecutions.status, 'running'),
+              eq(schema.discussionExecutions.status, 'started'),
               isNull(schema.discussionExecutions.completedAt)
             )
           )
@@ -81,6 +85,19 @@ async function createDefaultExecutionLockStore(): Promise<ExecutionLockStore> {
         if (active.length === 0) {
           return false;
         }
+
+        await tx
+          .update(schema.conversations)
+          .set({
+            executionLockToken: null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.conversations.id, discussionId),
+              eq(schema.conversations.executionLockToken, lockHolder)
+            )
+          );
 
         await tx
           .update(schema.discussionExecutions)

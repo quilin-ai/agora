@@ -13,14 +13,25 @@ export type ConversationStatus = DiscussionStatus;
 export type TerminalStatus = 'completed' | 'failed' | 'aborted';
 
 export type ConversationType = 'chat' | 'council';
-export type ConversationMode = 'consensus';
-export type ConversationVisibility = 'private' | 'public';
-export type MessageRole = 'user' | 'assistant' | 'system';
+export type DiscussionMode = 'consensus';
+export type ConversationMode = DiscussionMode;
+export type Visibility = 'private' | 'public' | 'team';
+export type ConversationVisibility = Visibility;
+export type RiskLevel = 'normal' | 'sensitive' | 'high_risk';
+export type MessageRole = 'user' | 'assistant' | 'secretary' | 'system';
+export type MessageStatus = 'streaming' | 'completed' | 'partial' | 'error' | 'skipped' | 'timeout';
+export type FinishReason = 'stop' | 'length' | 'timeout' | 'error' | 'filtered' | 'unknown';
+export type ModelErrorType =
+  | 'timeout'
+  | 'rate_limited'
+  | 'server_error'
+  | 'stream_interrupted'
+  | 'output_filtered';
 
 export type RoundType = 'independent' | 'review' | 'rebuttal';
 export type RoundNumber = 1 | 2 | 3;
-export type RoundStatus = 'pending' | 'running' | 'completed' | 'failed';
-export type ExecutionStatus = 'running' | 'completed' | 'failed';
+export type RoundStatus = 'completed' | 'partial' | 'failed';
+export type ExecutionStatus = 'started' | 'completed' | 'failed' | 'timeout';
 
 export type DiscussionTransition =
   | { from: 'created'; to: 'streaming' }
@@ -42,7 +53,10 @@ export interface Message {
   round?: number | null;
   anonymous_label?: string | null;
   content: string;
-  status?: string | null;
+  status?: MessageStatus | null;
+  error_type?: ModelErrorType | null;
+  error_message?: string | null;
+  finish_reason?: FinishReason | null;
   created_at: string;
 }
 
@@ -50,16 +64,18 @@ export interface Conversation {
   id: string;
   user_id: string;
   type: ConversationType;
-  mode: string;
+  mode: DiscussionMode;
   status: ConversationStatus;
   current_round: number;
   last_completed_round: number;
   models: string[];
+  max_rounds?: number;
   title: string | null;
   topic: string | null;
   summary: DiscussionSummaryFinal | null;
-  visibility: string;
+  visibility: Visibility;
   share_slug: string | null;
+  risk_level?: RiskLevel;
   total_platform_price: number;
   user_rating: number | null;
   created_at: string;

@@ -90,7 +90,7 @@ describe('stream-hub', () => {
     });
 
     hub.done('d1', { raw_cost: 0.08, platform_price: 0.1 });
-    hub.restore('d1', 'completed', 3);
+    hub.restore('d1', 'completed', 3, 4);
     hub.error('d1', 'boom');
     hub.interruptAck('d1');
 
@@ -110,7 +110,7 @@ describe('stream-hub', () => {
           can_stream: false,
           current_status: 'completed',
           current_round: 3,
-          last_completed_round: 3,
+          last_completed_round: 4,
           completed_round_messages: [],
           summary: null,
         },

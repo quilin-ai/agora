@@ -209,7 +209,7 @@ describe('zod schemas', () => {
           can_stream: false,
           current_status: 'completed',
           current_round: 3,
-          last_completed_round: 3,
+          last_completed_round: 4,
           completed_round_messages: [],
           summary,
         },

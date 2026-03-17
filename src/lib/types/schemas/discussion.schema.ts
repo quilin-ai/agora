@@ -13,11 +13,36 @@ export const conversationStatusSchema = discussionStatusSchema;
 
 export const terminalStatusSchema = z.enum(['completed', 'failed', 'aborted']);
 export const conversationTypeSchema = z.enum(['chat', 'council']);
-export const messageRoleSchema = z.enum(['user', 'assistant', 'system']);
+export const visibilitySchema = z.enum(['private', 'public', 'team']);
+export const riskLevelSchema = z.enum(['normal', 'sensitive', 'high_risk']);
+export const messageRoleSchema = z.enum(['user', 'assistant', 'secretary', 'system']);
+export const messageStatusSchema = z.enum([
+  'streaming',
+  'completed',
+  'partial',
+  'error',
+  'skipped',
+  'timeout',
+]);
+export const finishReasonSchema = z.enum([
+  'stop',
+  'length',
+  'timeout',
+  'error',
+  'filtered',
+  'unknown',
+]);
+export const modelErrorTypeSchema = z.enum([
+  'timeout',
+  'rate_limited',
+  'server_error',
+  'stream_interrupted',
+  'output_filtered',
+]);
 export const roundTypeSchema = z.enum(['independent', 'review', 'rebuttal']);
 export const roundNumberSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
-export const roundStatusSchema = z.enum(['pending', 'running', 'completed', 'failed']);
-export const executionStatusSchema = z.enum(['running', 'completed', 'failed']);
+export const roundStatusSchema = z.enum(['completed', 'partial', 'failed']);
+export const executionStatusSchema = z.enum(['started', 'completed', 'failed', 'timeout']);
 
 export const discussionTransitionSchema = z.union([
   z.object({ from: z.literal('created'), to: z.literal('streaming') }).strict(),
@@ -41,7 +66,10 @@ export const messageSchema = z
     round: z.number().nullable().optional(),
     anonymous_label: z.string().nullable().optional(),
     content: z.string(),
-    status: z.string().nullable().optional(),
+    status: messageStatusSchema.nullable().optional(),
+    error_type: modelErrorTypeSchema.nullable().optional(),
+    error_message: z.string().nullable().optional(),
+    finish_reason: finishReasonSchema.nullable().optional(),
     created_at: z.string(),
   })
   .strict();

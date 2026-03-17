@@ -76,6 +76,7 @@ export async function runConsensusDiscussion(params: {
       to: 'streaming',
       updates: {
         currentRound: 1,
+        executionStartedAt: now(),
       },
       store: params.stateStore,
     });
@@ -227,7 +228,7 @@ export async function runConsensusDiscussion(params: {
       to: 'completed',
       updates: {
         currentRound: 3,
-        lastCompletedRound: 3,
+        lastCompletedRound: 4,
         summary: secretarySummary,
         completedAt: now(),
         errorCode: null,
@@ -275,14 +276,6 @@ async function executeRound(params: {
   now: () => Date;
 }): Promise<RoundExecutionResult> {
   const startedAt = params.now();
-  await params.repository.saveRound({
-    discussionId: params.discussion.id,
-    roundNumber: params.roundNumber,
-    roundType: params.roundType,
-    status: 'running',
-    modelResponses: [],
-    startedAt,
-  });
 
   const settled = await Promise.allSettled(
     params.discussion.modelIds.map(async (modelId) => {
@@ -290,6 +283,7 @@ async function executeRound(params: {
         modelId,
         mode: params.promptMode,
         role: 'participant',
+        roundType: params.roundType,
       });
       const generator = params.client.streamCompletion({
         model: modelId,
@@ -380,7 +374,6 @@ async function executeRound(params: {
     await params.repository.saveRound({
       discussionId: params.discussion.id,
       roundNumber: params.roundNumber,
-      roundType: params.roundType,
       status: 'failed',
       modelResponses: responses,
       failedModels: failures,
@@ -398,8 +391,7 @@ async function executeRound(params: {
   await params.repository.saveRound({
     discussionId: params.discussion.id,
     roundNumber: params.roundNumber,
-    roundType: params.roundType,
-    status: 'completed',
+    status: failures.length > 0 ? 'partial' : 'completed',
     modelResponses: responses,
     failedModels: failures,
     startedAt,
@@ -585,6 +577,7 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
       const skippedModels = failedModels
         .filter((failure) => failure.action === 'skipped')
         .map((failure) => failure.logical_model_id);
+      const totalModels = completedModels.length + failedModels.length;
       const startedAt = record.startedAt ?? new Date();
       const completedAt = record.completedAt ?? null;
       const durationMs =
@@ -597,12 +590,11 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
           .set({
             conversationId: record.discussionId,
             round: record.roundNumber,
-            roundType: record.roundType,
             status: record.status,
             completedModels,
             skippedModels,
             failedModels,
-            totalModels: completedModels.length + skippedModels.length,
+            totalModels,
             roundTraceId,
             startedAt,
             completedAt,
@@ -615,12 +607,11 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
       await db.insert(schema.discussionRounds).values({
         conversationId: record.discussionId,
         round: record.roundNumber,
-        roundType: record.roundType,
         status: record.status,
         completedModels,
         skippedModels,
         failedModels,
-        totalModels: completedModels.length + skippedModels.length,
+        totalModels,
         roundTraceId,
         startedAt,
         completedAt,

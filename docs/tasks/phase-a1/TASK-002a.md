@@ -3,7 +3,7 @@
 > 阶段：Phase A1
 > 优先级：P0
 > 前置依赖：Task-002, Task-008
-> 真相源：`Agora-MVP-统一工程规格-v3.2` 第九章、十一章、十二章、第二十二章
+> 真相源：`技术文档.md` 第九章、十一章、十二章、第二十二章
 > 目标：把 discussion 启动、恢复、owner/observer 分流统一收敛到 `session-starter.ts`。
 
 ---

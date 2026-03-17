@@ -2,9 +2,12 @@ import { z } from 'zod';
 
 export const creditTransactionTypeSchema = z.enum([
   'hold',
+  'settle',
   'release',
   'refund',
-  'settle',
+  'grant',
+  'purchase',
+  'monthly_reset',
 ]);
 
 export const billingCostSchema = z

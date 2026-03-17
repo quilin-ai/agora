@@ -3,7 +3,12 @@ import { foreignKey, index, integer, jsonb, numeric, pgTable, text, timestamp, u
 
 import type { DiscussionSummaryFinal } from '@/lib/types';
 
-import type { ConversationTypeValue, DiscussionStatusValue } from './enums';
+import type {
+  ConversationTypeValue,
+  DiscussionStatusValue,
+  RiskLevelValue,
+  VisibilityValue,
+} from './enums';
 import { billingSnapshots } from './billing-snapshots';
 import { users } from './users';
 
@@ -40,9 +45,9 @@ export const conversations = pgTable('conversations', {
   totalInputTokens: integer('total_input_tokens').default(0),
   totalOutputTokens: integer('total_output_tokens').default(0),
   billingSnapshotId: uuid('billing_snapshot_id').references(() => billingSnapshots.id),
-  visibility: text('visibility').default('private'),
+  visibility: text('visibility').$type<VisibilityValue>().default('private'),
   shareSlug: text('share_slug').unique(),
-  riskLevel: text('risk_level').default('normal'),
+  riskLevel: text('risk_level').$type<RiskLevelValue>().default('normal'),
   parentId: uuid('parent_id'),
   forkPointMessageId: uuid('fork_point_message_id'),
   forkInstruction: text('fork_instruction'),

@@ -1,8 +1,8 @@
-# Agora MVP Core Spec (v3.2 Digest)
+# Agora MVP Core Spec Digest
 
-> 文档性质：`Agora-MVP-统一工程规格-v3.2` 的执行摘要版。
+> 文档性质：[`技术文档.md`](../../技术文档.md) 的执行摘要版。
 > 作用：给工程实现提供最小但可执行的约束提炼。
-> 优先级：当本文与原始规格冲突时，以 `Agora-MVP-统一工程规格-v3.2` 为准。
+> 优先级：当本文与原始规格冲突时，以 `技术文档.md` 为准。
 > 非目标：本文不是替代规格全文的第二真相源，只做施工摘要。
 
 ---
@@ -11,7 +11,7 @@
 
 唯一工程规格源：
 
-- `Agora-MVP-统一工程规格-v3.2`
+- `技术文档.md`
 
 工程铁律：
 
@@ -23,7 +23,7 @@
 - 不得省略测试矩阵
 - 遇到规格缺失只能报 gap
 - `src/lib/` 不得 import `src/cli/` 或 `src/app/`
-- CLI / TUI / Web 必须共享同一套 core
+- CLI / Web 必须共享同一套 core
 
 ---
 
@@ -36,7 +36,6 @@ MVP 只做：
 - Secretary 总结
 - SSE 11 个事件
 - CLI-first 引擎闭环
-- TUI 演示包装（在 CLI 稳定后）
 - Web 最小壳接入
 
 MVP 不做：
@@ -56,7 +55,7 @@ MVP 不做：
 逻辑分层：
 
 - `src/lib/` = Core 层
-- `src/cli/` = CLI / TUI renderer
+- `src/cli/` = CLI renderer
 - `src/app/` = Web renderer
 
 分层铁律：
@@ -119,6 +118,7 @@ Phase A 最小技术栈：
 - tsx
 - vitest
 - PostgreSQL / Drizzle / OpenRouter / Zod
+- Phase A 不引入 Next.js / React / Tailwind / shadcn / NextAuth
 
 ---
 
@@ -176,7 +176,9 @@ Discussion 持久状态：
 执行锁：
 
 - 首次有效连接通过 `session-starter` 尝试获取
-- 未拿到锁的连接进入 observer 语义
+- 锁获取 = CAS 更新 `conversations.execution_lock_token`，前置条件是 `status='created'`
+- 只有成功持锁并真正启动 orchestration 才创建 `discussion_executions` attempt
+- 未拿到锁的连接进入 observer / restore 语义
 - 恢复连接 / polling / 锁获取失败均不创建新的 execution attempt
 
 ---

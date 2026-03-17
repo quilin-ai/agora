@@ -3,7 +3,7 @@
 > 阶段：Phase A2
 > 优先级：P0
 > 前置依赖：Task-A2-chat, Task-A2-tools
-> 真相源：`Agora-MVP-统一工程规格-v3.2` 第二十章、第二十二章
+> 真相源：`技术文档.md` 第二十章、第二十二章
 > 目标：补齐 CLI 阶段的 unit / integration / chaos 测试矩阵。
 
 ---

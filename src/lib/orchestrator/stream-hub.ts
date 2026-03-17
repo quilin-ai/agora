@@ -111,12 +111,17 @@ export function createStreamHub(onEvent: (event: SSEEvent) => void): StreamHub {
         data: toDoneEventData(billing, nextSeq()),
       });
     },
-    restore(discussionId: string, status: DiscussionStatus, lastCompletedRound: number) {
+    restore(
+      discussionId: string,
+      status: DiscussionStatus,
+      currentRound: number,
+      lastCompletedRound: number
+    ) {
       emitValidatedEvent(onEvent, {
         type: 'restore',
         data: toRestoreEventData({
           status,
-          currentRound: lastCompletedRound,
+          currentRound,
           lastCompletedRound,
         }),
       });

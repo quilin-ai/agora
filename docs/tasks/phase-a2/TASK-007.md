@@ -3,7 +3,7 @@
 > 阶段：Phase A2
 > 优先级：P0
 > 前置依赖：Task-002
-> 真相源：`Agora-MVP-统一工程规格-v3.2` 第三章、第二十二章
+> 真相源：`技术文档.md` 第三章、第二十二章
 > 目标：实现 `estimateRawCost + hold / settle / release / refund` 的完整账本逻辑。
 
 ---

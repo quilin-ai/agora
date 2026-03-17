@@ -1,6 +1,6 @@
-# Agora MVP Build Order (v3.2 Aligned)
+# Agora MVP Build Order
 
-> 文档性质：`Agora-MVP-统一工程规格-v3.2` 第二十二章的施工顺序摘要。
+> 文档性质：[`技术文档.md`](../../技术文档.md) 第二十二章的施工顺序摘要。
 > 目标：把完整规格压缩成实际执行顺序。
 > 优先级：不改变协议，只定义顺序、阶段、验收门槛。
 
@@ -199,5 +199,5 @@ Go / No-Go：
 - CLI 专属事件定义
 - CLI 专属 DB schema
 - JSONL 作为 canonical state
-- 在 Phase A 提前做复杂 TUI
-- 在未完成 `Task-015-CLI` 前启动 TUI 正式拆分
+- 在 Phase A 提前做 Web renderer
+- 在未完成 `Task-015-CLI` 前启动 Phase B

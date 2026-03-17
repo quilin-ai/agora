@@ -199,7 +199,7 @@ describe('type definitions compile-time checks', () => {
           can_stream: false,
           current_status: 'completed',
           current_round: 3,
-          last_completed_round: 3,
+          last_completed_round: 4,
           completed_round_messages: [],
           summary,
         },
@@ -214,9 +214,17 @@ describe('type definitions compile-time checks', () => {
     expect(events).toHaveLength(11);
   });
 
-  it('CreditTransactionType covers 4 values', () => {
-    const types: CreditTransactionType[] = ['hold', 'release', 'refund', 'settle'];
-    expect(types).toHaveLength(4);
+  it('CreditTransactionType covers 7 values', () => {
+    const types: CreditTransactionType[] = [
+      'hold',
+      'settle',
+      'release',
+      'refund',
+      'grant',
+      'purchase',
+      'monthly_reset',
+    ];
+    expect(types).toHaveLength(7);
   });
 
   it('BillingCost has raw_cost and platform_price', () => {

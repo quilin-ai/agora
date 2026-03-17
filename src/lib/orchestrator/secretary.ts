@@ -35,6 +35,7 @@ export async function runSecretarySummary(
     modelId: params.secretaryModelId,
     mode: 'summary',
     role: 'secretary',
+    roundType: 'all',
   });
 
   if (!template.content.trim()) {
@@ -42,6 +43,7 @@ export async function runSecretarySummary(
       modelId: params.secretaryModelId,
       mode: 'summary',
       role: 'secretary',
+      roundType: 'all',
     });
   }
 
@@ -267,6 +269,7 @@ export async function createDefaultPromptTemplateStore(): Promise<PromptTemplate
             eq(schema.promptTemplates.model, lookup.modelId),
             eq(schema.promptTemplates.mode, lookup.mode),
             eq(schema.promptTemplates.role, lookup.role),
+            eq(schema.promptTemplates.roundType, lookup.roundType),
             eq(schema.promptTemplates.isActive, true)
           )
         )

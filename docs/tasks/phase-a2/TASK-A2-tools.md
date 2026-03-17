@@ -3,7 +3,7 @@
 > 阶段：Phase A2
 > 优先级：P0
 > 前置依赖：Task-A1-E2E
-> 真相源：`Agora-MVP-统一工程规格-v3.2` 第二十一、二十二章
+> 真相源：`技术文档.md` 第二十一、二十二章
 > 目标：补齐 replay / export / followup 三个施工命令。
 
 ---

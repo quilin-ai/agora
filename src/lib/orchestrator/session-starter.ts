@@ -1,6 +1,13 @@
 import { eq } from 'drizzle-orm';
 
-import type { ActorContext, Conversation, DiscussionStatus, SSEEvent } from '@/lib/types';
+import type {
+  ActorContext,
+  Conversation,
+  DiscussionMode,
+  DiscussionStatus,
+  SSEEvent,
+  Visibility,
+} from '@/lib/types';
 
 import { acquireLock } from './execution-lock';
 import { runConsensusDiscussion } from './consensus';
@@ -97,7 +104,7 @@ function mapConversationRecord(record: {
   title: string | null;
   topic: string | null;
   summary: Conversation['summary'];
-  visibility: string;
+  visibility: Visibility;
   shareSlug: string | null;
   totalPlatformPrice: string | number;
   userRating: number | null;
@@ -108,7 +115,7 @@ function mapConversationRecord(record: {
     id: record.id,
     user_id: record.userId,
     type: record.type as Conversation['type'],
-    mode: record.mode,
+    mode: record.mode as DiscussionMode,
     status: record.status,
     current_round: record.currentRound,
     last_completed_round: record.lastCompletedRound,

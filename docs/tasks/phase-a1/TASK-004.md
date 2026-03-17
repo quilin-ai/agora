@@ -3,7 +3,7 @@
 > 阶段：Phase A1
 > 优先级：P0
 > 前置依赖：Task-001
-> 真相源：`Agora-MVP-统一工程规格-v3.2` 第三章、第十二章、第二十二章
+> 真相源：`技术文档.md` 第三章、第十二章、第二十二章
 > 目标：建立符合 `v3.2` 的 OpenRouter 调用封装，为 `ask`、orchestrator、Secretary 提供统一 provider 入口。
 
 ---

@@ -38,6 +38,7 @@ describe('secretary', () => {
           model: 'gpt-4o',
           mode: 'summary',
           role: 'secretary',
+          roundType: 'all',
           content: 'Summarize the discussion.\nTopic={{topic}}\nContext={{context}}',
           isActive: true,
         };
@@ -99,6 +100,7 @@ describe('secretary', () => {
           model: 'gpt-4o',
           mode: 'summary',
           role: 'secretary',
+          roundType: 'all',
           content: 'Summarize.',
           isActive: true,
         };
@@ -167,6 +169,7 @@ describe('secretary', () => {
           model: 'gpt-4o',
           mode: 'summary',
           role: 'secretary',
+          roundType: 'all',
           content: 'Summarize.',
           isActive: true,
         };

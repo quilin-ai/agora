@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { conversations } from './conversations';
-import type { RoundStatusValue, RoundTypeValue } from './enums';
+import type { RoundStatusValue } from './enums';
 
 interface ModelFailureRecord {
   logical_model_id: string;
@@ -44,7 +44,6 @@ export const discussionRounds = pgTable('discussion_rounds', {
   roundInputTokens: integer('round_input_tokens').default(0),
   roundOutputTokens: integer('round_output_tokens').default(0),
   roundTraceId: text('round_trace_id').notNull(),
-  roundType: text('round_type').$type<RoundTypeValue>().notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   durationMs: integer('duration_ms'),
