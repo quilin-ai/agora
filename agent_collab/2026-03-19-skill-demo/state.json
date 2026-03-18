@@ -1,0 +1,30 @@
+{
+  "protocol_version": "LACP-v0.1",
+  "collaboration_id": "2026-03-19-skill-demo",
+  "title": "Demonstrate a minimal cross-agent collaboration using local-agent-collab-protocol",
+  "kind": "discussion",
+  "status": "completed",
+  "phase": "review",
+  "initiator": "human",
+  "current_owner": "codex",
+  "participants": [
+    "codex",
+    "claude",
+    "gemini"
+  ],
+  "next_action": "Revise the protocol to require monotonic append order and consider async pickup",
+  "last_log_entry": 7,
+  "relevant_paths": [
+    "agent_collab/2026-03-19-skill-demo/topic.md",
+    "agent_collab/2026-03-19-skill-demo/log.md",
+    "agent_collab/2026-03-19-skill-demo/state.json",
+    "agent_collab/2026-03-19-skill-demo/result.md"
+  ],
+  "artifacts": [],
+  "session_hints": {
+    "codex": null,
+    "claude": null,
+    "gemini": null
+  },
+  "updated_at": "2026-03-19 03:07:00"
+}

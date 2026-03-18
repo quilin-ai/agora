@@ -1,24 +1,38 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import type {
   ActorContext,
+  CompressedRoundState,
   DiscussionSummaryFinal,
   RoundNumber,
   RoundType,
   SSEEvent,
 } from '@/lib/types';
+import { loadAgoraModelConfig } from '@/lib/config/models';
+import { prepareGroundingContext, buildConsensusGroundingRoleDescription } from '@/lib/grounding/service';
 import { createOpenRouterClient } from '@/lib/openrouter/client';
 
-import { anonymizeModels, anonymizeRoundResponses } from './anonymizer';
-import { compressContext } from './context-manager';
+import { anonymizeModels, anonymizeRoundResponsesForReviewer } from './anonymizer';
+import {
+  compressRoundState,
+  mergeCompressedStates,
+  serializeCompressedState,
+  serializeCompressedStates,
+} from './context-manager';
 import { acquireLock, releaseLock } from './execution-lock';
 import {
   createDefaultPromptTemplateStore,
   renderPromptTemplate,
+  runSecretaryRoundSummary,
   runSecretarySummary,
 } from './secretary';
+import { buildRoundPromptVariables } from './prompt-variables';
 import { casTransition } from './state-machine';
-import { createStreamHub } from './stream-hub';
+import {
+  createStreamHub,
+  ROUND_RULES,
+  streamWithRetry,
+} from './stream-hub';
 import type {
   BillingResolver,
   ConsensusRepository,
@@ -26,14 +40,12 @@ import type {
   ExecutionLockStore,
   OpenRouterClient,
   PromptTemplateStore,
-  RoundExecutionResult,
   RoundModelResponse,
+  RoundExecutionResult,
   StreamHub,
   DiscussionStateStore,
 } from './types';
 import { OrchestratorError } from './types';
-
-const MIN_PARTICIPANT_MODELS = 2;
 
 export async function runConsensusDiscussion(params: {
   discussionId: string;
@@ -88,14 +100,22 @@ export async function runConsensusDiscussion(params: {
       );
     }
 
+    hub.progress(discussion.id, 1, 'background_research');
+    const grounding = await prepareGroundingContext({
+      topic: discussion.topic,
+      scenario: 'council',
+      defaultModel: resolveSecretaryModelId(discussion.modelIds),
+      client,
+    });
     hub.progress(discussion.id, 1, 'independent');
 
     const round1 = await executeRound({
       discussion,
       roundNumber: 1,
       roundType: 'independent',
-      context: `Topic:\n${discussion.topic}`,
-      promptMode: 'independent',
+      context: grounding.used ? grounding.brief : `Topic:\n${discussion.topic}`,
+      roleDescription: buildConsensusGroundingRoleDescription(grounding),
+      previousStates: [],
       promptStore,
       client,
       repository,
@@ -117,9 +137,18 @@ export async function runConsensusDiscussion(params: {
       discussionId: discussion.id,
       round: 1,
       completedModels: round1.responses.map((response) => response.modelId),
-      skippedModels: round1.failures.map((failure) => failure.logical_model_id),
+      skippedModels: extractSkippedModels(round1.failures),
       failedModels: round1.failures,
       totalModels: discussion.modelIds.length,
+    });
+    await emitRoundSecretarySummary({
+      discussion,
+      round: 1,
+      context: serializeCompressedStates([round1.compressedState]),
+      promptStore,
+      client,
+      hub,
+      now,
     });
 
     const mappings = await anonymizeModels({
@@ -133,13 +162,12 @@ export async function runConsensusDiscussion(params: {
       mappings.map((mapping) => mapping.anonymousLabel)
     );
 
-    const round2Context = anonymizeRoundResponses(round1.responses, mappings);
     const round2 = await executeRound({
       discussion,
       roundNumber: 2,
       roundType: 'review',
-      context: round2Context,
-      promptMode: 'review',
+      context: (modelId) => anonymizeRoundResponsesForReviewer(round1.responses, mappings, modelId),
+      previousStates: [round1.compressedState],
       promptStore,
       client,
       repository,
@@ -161,23 +189,31 @@ export async function runConsensusDiscussion(params: {
       discussionId: discussion.id,
       round: 2,
       completedModels: round2.responses.map((response) => response.modelId),
-      skippedModels: round2.failures.map((failure) => failure.logical_model_id),
+      skippedModels: extractSkippedModels(round2.failures),
       failedModels: round2.failures,
       totalModels: discussion.modelIds.length,
     });
+    await emitRoundSecretarySummary({
+      discussion,
+      round: 2,
+      context: serializeCompressedStates([round1.compressedState, round2.compressedState]),
+      promptStore,
+      client,
+      hub,
+      now,
+    });
 
     hub.progress(discussion.id, 3, 'rebuttal');
-    const compressedContext = compressContext([
-      { title: 'Round 1', content: anonymizeRoundResponses(round1.responses, mappings) },
-      { title: 'Round 2', content: round2.responses.map(formatResponse).join('\n\n') },
-    ]);
+    const compressedContext = serializeCompressedState(
+      mergeCompressedStates([round1.compressedState, round2.compressedState])
+    );
 
     const round3 = await executeRound({
       discussion,
       roundNumber: 3,
       roundType: 'rebuttal',
-      context: compressedContext.content,
-      promptMode: 'rebuttal',
+      context: compressedContext,
+      previousStates: [round1.compressedState, round2.compressedState],
       promptStore,
       client,
       repository,
@@ -199,7 +235,7 @@ export async function runConsensusDiscussion(params: {
       discussionId: discussion.id,
       round: 3,
       completedModels: round3.responses.map((response) => response.modelId),
-      skippedModels: round3.failures.map((failure) => failure.logical_model_id),
+      skippedModels: extractSkippedModels(round3.failures),
       failedModels: round3.failures,
       totalModels: discussion.modelIds.length,
     });
@@ -207,12 +243,13 @@ export async function runConsensusDiscussion(params: {
 
     const secretarySummary = await runSecretarySummary({
       discussionId: discussion.id,
-      secretaryModelId: discussion.modelIds[0],
+      secretaryModelId: resolveSecretaryModelId(discussion.modelIds),
       topic: discussion.topic,
-      context: [round1, round2, round3]
-        .flatMap((round) => round.responses)
-        .map(formatResponse)
-        .join('\n\n'),
+      context: serializeCompressedStates([
+        round1.compressedState,
+        round2.compressedState,
+        round3.compressedState,
+      ]),
       participantModelIds: discussion.modelIds,
       promptStore,
       client,
@@ -263,12 +300,44 @@ export async function runConsensusDiscussion(params: {
   }
 }
 
+async function emitRoundSecretarySummary(params: {
+  discussion: DiscussionRuntimeRecord;
+  round: RoundNumber;
+  context: string;
+  promptStore: PromptTemplateStore;
+  client: OpenRouterClient;
+  hub: StreamHub;
+  now: () => Date;
+}): Promise<void> {
+  params.hub.progress(params.discussion.id, params.round, 'round_summary');
+
+  const summary = await runSecretaryRoundSummary({
+    discussionId: params.discussion.id,
+    round: params.round,
+    secretaryModelId: resolveRoundSummaryModelId(params.discussion.modelIds),
+    topic: params.discussion.topic,
+    context: params.context,
+    participantModelIds: params.discussion.modelIds,
+    promptStore: params.promptStore,
+    client: params.client,
+    now: params.now,
+  });
+
+  params.hub.roundSummary(
+    params.discussion.id,
+    params.round,
+    params.round < 3 ? (params.round + 1) as RoundNumber : null,
+    summary
+  );
+}
+
 async function executeRound(params: {
   discussion: DiscussionRuntimeRecord;
   roundNumber: RoundNumber;
   roundType: RoundType;
-  context: string;
-  promptMode: 'independent' | 'review' | 'rebuttal';
+  context: string | ((modelId: string) => string);
+  roleDescription?: string;
+  previousStates: CompressedRoundState[];
   promptStore: PromptTemplateStore;
   client: OpenRouterClient;
   repository: ConsensusRepository;
@@ -276,107 +345,90 @@ async function executeRound(params: {
   now: () => Date;
 }): Promise<RoundExecutionResult> {
   const startedAt = params.now();
-
-  const settled = await Promise.allSettled(
+  const prompts = await Promise.all(
     params.discussion.modelIds.map(async (modelId) => {
       const template = await params.promptStore.getActiveTemplate({
         modelId,
-        mode: params.promptMode,
+        mode: 'consensus',
         role: 'participant',
         roundType: params.roundType,
       });
-      const generator = params.client.streamCompletion({
-        model: modelId,
-        messages: [
-          {
-            role: 'system',
-            content: renderPromptTemplate(template.content, {
-              topic: params.discussion.topic,
-              context: params.context,
-              discussion_id: params.discussion.id,
-            }),
-          },
-        ],
-      });
 
-      let fullText = '';
-      while (true) {
-        const next = await generator.next();
-        if (next.done) {
-          const result = next.value;
-          params.hub.modelDone({
-            discussionId: params.discussion.id,
-            logicalModelId: modelId,
-            actualModelId: modelId,
-            round: params.roundNumber,
-            inputTokens: result.usage.promptTokens,
-            outputTokens: result.usage.completionTokens,
-          });
-          return {
-            modelId,
-            actualModelId: modelId,
-            round: params.roundNumber,
-            text: fullText,
-            inputTokens: result.usage.promptTokens,
-            tokens: result.usage.completionTokens,
-          } satisfies RoundModelResponse;
-        }
+      const context =
+        typeof params.context === 'function' ? params.context(modelId) : params.context;
 
-        if (next.value.text) {
-          fullText += next.value.text;
-          params.hub.chunk({
+      return {
+        modelId,
+        prompt: renderPromptTemplate(
+          template.content,
+          buildRoundPromptVariables({
             discussionId: params.discussion.id,
-            logicalModelId: modelId,
-            actualModelId: modelId,
-            round: params.roundNumber,
-            text: next.value.text,
-          });
-        }
-      }
+            topic: params.discussion.topic,
+            context,
+            roundType: params.roundType,
+            roleDescription: params.roleDescription,
+          })
+        ),
+      };
     })
+  );
+
+  const settled = await Promise.all(
+    prompts.map(async ({ modelId, prompt }) =>
+      streamWithRetry({
+        discussionId: params.discussion.id,
+        logicalModelId: modelId,
+        round: params.roundNumber,
+        prompt,
+        client: params.client,
+        hub: params.hub,
+        fallbackModelIds: resolveDegradedModelCandidates({
+          logicalModelId: modelId,
+          participantModelIds: params.discussion.modelIds,
+          pricingData: params.discussion.pricingData,
+        }),
+        pricingData: params.discussion.pricingData,
+      })
+    )
   );
 
   const responses: RoundModelResponse[] = [];
   const failures: RoundExecutionResult['failures'] = [];
+  let roundRawCost = 0;
+  let roundInputTokens = 0;
+  let roundOutputTokens = 0;
 
-  settled.forEach((result, index) => {
-    const modelId = params.discussion.modelIds[index];
+  settled.forEach((result) => {
+    failures.push(...result.failures);
 
-    if (result.status === 'fulfilled') {
-      responses.push(result.value);
+    if (!result.response) {
       return;
     }
 
-    const errorMessage =
-      result.reason instanceof Error ? result.reason.message : 'Unknown model execution error';
-
-    const failure = {
-      logical_model_id: modelId,
-      actual_model_id: null,
-      error_type: inferErrorType(errorMessage),
-      action: 'skipped' as const,
-    };
-
-    params.hub.modelError({
-      discussionId: params.discussion.id,
-      logicalModelId: modelId,
-      actualModelId: null,
-      round: params.roundNumber,
-      errorType: failure.error_type,
-      action: failure.action,
-      degradedTo: null,
-      message: errorMessage,
-    });
-    failures.push(failure);
+    responses.push(result.response);
+    roundRawCost += result.response.rawCost;
+    roundInputTokens += result.response.inputTokens;
+    roundOutputTokens += result.response.outputTokens;
   });
 
-  if (responses.length < MIN_PARTICIPANT_MODELS) {
+  roundRawCost = Number(roundRawCost.toFixed(6));
+  const compressedState = compressRoundState({
+    round: params.roundNumber,
+    responses,
+    previousStates: params.previousStates,
+  });
+
+  if (responses.length < ROUND_RULES.MIN_MODELS_PER_ROUND) {
     await params.repository.saveRound({
       discussionId: params.discussion.id,
       roundNumber: params.roundNumber,
       status: 'failed',
       modelResponses: responses,
       failedModels: failures,
+      compressedState,
+      roundRawCost,
+      roundInputTokens,
+      roundOutputTokens,
       startedAt,
       completedAt: params.now(),
     });
@@ -394,11 +446,22 @@ async function executeRound(params: {
     status: failures.length > 0 ? 'partial' : 'completed',
     modelResponses: responses,
     failedModels: failures,
+    compressedState,
+    roundRawCost,
+    roundInputTokens,
+    roundOutputTokens,
     startedAt,
     completedAt: params.now(),
   });
 
-  return { responses, failures };
+  return {
+    responses,
+    failures,
+    compressedState,
+    roundRawCost,
+    roundInputTokens,
+    roundOutputTokens,
+  };
 }
 
 async function handleFatalError(params: {
@@ -473,7 +536,7 @@ async function handleFatalError(params: {
 }
 
 function validateParticipants(discussion: DiscussionRuntimeRecord): void {
-  if (discussion.modelIds.length < MIN_PARTICIPANT_MODELS) {
+  if (discussion.modelIds.length < ROUND_RULES.MIN_MODELS_PER_ROUND) {
     throw new OrchestratorError(
       'Consensus discussions require at least two participant models',
       'INSUFFICIENT_MODEL_COUNT'
@@ -494,30 +557,101 @@ async function loadDiscussionOrThrow(
   return discussion;
 }
 
-function formatResponse(response: RoundModelResponse): string {
-  return `${response.modelId}\n${response.text}`.trim();
+function extractSkippedModels(failures: RoundExecutionResult['failures']): string[] {
+  return Array.from(
+    new Set(
+      failures
+        .filter((failure) => failure.action === 'skipped')
+        .map((failure) => failure.logical_model_id)
+    )
+  );
 }
 
-function inferErrorType(errorMessage: string): string {
-  const normalized = errorMessage.toLowerCase();
+function resolveDegradedModelCandidates(params: {
+  logicalModelId: string;
+  participantModelIds: string[];
+  pricingData?: DiscussionRuntimeRecord['pricingData'];
+}): string[] {
+  const candidateModelIds = (() => {
+    try {
+      const configuredCandidates = loadAgoraModelConfig().allowedModels;
 
-  if (normalized.includes('timeout')) {
-    return 'timeout';
+      if (!params.pricingData) {
+        return configuredCandidates;
+      }
+
+      const pricedConfiguredCandidates = configuredCandidates.filter(
+        (modelId) => params.pricingData?.[modelId]
+      );
+
+      return pricedConfiguredCandidates.length > 0
+        ? pricedConfiguredCandidates
+        : params.participantModelIds;
+    } catch {
+      return params.participantModelIds;
+    }
+  })();
+  const logicalProvider = params.logicalModelId.split('/')[0];
+
+  return candidateModelIds
+    .filter((modelId) => modelId !== params.logicalModelId)
+    .sort((left, right) => {
+      const leftProviderPenalty = left.startsWith(`${logicalProvider}/`) ? 0 : 1;
+      const rightProviderPenalty = right.startsWith(`${logicalProvider}/`) ? 0 : 1;
+
+      if (leftProviderPenalty !== rightProviderPenalty) {
+        return leftProviderPenalty - rightProviderPenalty;
+      }
+
+      const leftPrice = resolveModelSortPrice(left, params.pricingData);
+      const rightPrice = resolveModelSortPrice(right, params.pricingData);
+
+      if (leftPrice !== rightPrice) {
+        return leftPrice - rightPrice;
+      }
+
+      return left.localeCompare(right);
+    });
+}
+
+function resolveModelSortPrice(
+  modelId: string,
+  pricingData?: DiscussionRuntimeRecord['pricingData']
+): number {
+  const pricing = pricingData?.[modelId];
+
+  if (!pricing) {
+    return Number.POSITIVE_INFINITY;
   }
 
-  if (normalized.includes('rate')) {
-    return 'rate_limited';
-  }
+  return pricing.input + pricing.output;
+}
 
-  if (normalized.includes('interrupt')) {
-    return 'stream_interrupted';
+function resolveSecretaryModelId(participantModelIds: string[]): string {
+  try {
+    return loadAgoraModelConfig().secretaryModel;
+  } catch {
+    return participantModelIds[0] ?? '';
   }
+}
 
-  if (normalized.includes('filter')) {
-    return 'output_filtered';
+function resolveRoundSummaryModelId(participantModelIds: string[]): string {
+  try {
+    const config = loadAgoraModelConfig();
+
+    if (config.roundSummaryModel && !participantModelIds.includes(config.roundSummaryModel)) {
+      return config.roundSummaryModel;
+    }
+
+    const fallback = config.allowedModels.find((modelId) => !participantModelIds.includes(modelId));
+    if (fallback) {
+      return fallback;
+    }
+
+    return config.secretaryModel;
+  } catch {
+    return participantModelIds[0] ?? '';
   }
-
-  return 'server_error';
 }
 
 function createZeroBillingResolver(): BillingResolver {
@@ -558,6 +692,10 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
           ? conversation.models.filter((modelId): modelId is string => typeof modelId === 'string')
           : [],
         summary: conversation.summary as DiscussionSummaryFinal | null,
+        billingSnapshotId: conversation.billingSnapshotId,
+        pricingData: conversation.billingSnapshotId
+          ? await loadBillingSnapshotPricing(schema, conversation.billingSnapshotId, db)
+          : null,
       };
     },
     async saveRound(record) {
@@ -574,10 +712,21 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
 
       const completedModels = record.modelResponses.map((response) => response.modelId);
       const failedModels = record.failedModels ?? [];
-      const skippedModels = failedModels
-        .filter((failure) => failure.action === 'skipped')
-        .map((failure) => failure.logical_model_id);
-      const totalModels = completedModels.length + failedModels.length;
+      const skippedModels = Array.from(
+        new Set(
+          failedModels
+            .filter((failure) => failure.action === 'skipped')
+            .map((failure) => failure.logical_model_id)
+        )
+      );
+      const totalModels = new Set([
+        ...completedModels,
+        ...failedModels.map((failure) => failure.logical_model_id),
+      ]).size;
+      const compressedState = record.compressedState ?? null;
+      const roundRawCost = Number((record.roundRawCost ?? 0).toFixed(6));
+      const roundInputTokens = record.roundInputTokens ?? 0;
+      const roundOutputTokens = record.roundOutputTokens ?? 0;
       const startedAt = record.startedAt ?? new Date();
       const completedAt = record.completedAt ?? null;
       const durationMs =
@@ -595,12 +744,17 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
             skippedModels,
             failedModels,
             totalModels,
+            compressedState,
+            roundRawCost: roundRawCost.toFixed(6),
+            roundInputTokens,
+            roundOutputTokens,
             roundTraceId,
             startedAt,
             completedAt,
             durationMs,
           })
           .where(eq(schema.discussionRounds.id, existing[0].id));
+        await updateConversationUsageTotals(db, schema, record.discussionId);
         return;
       }
 
@@ -612,11 +766,17 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
         skippedModels,
         failedModels,
         totalModels,
+        compressedState,
+        roundRawCost: roundRawCost.toFixed(6),
+        roundInputTokens,
+        roundOutputTokens,
         roundTraceId,
         startedAt,
         completedAt,
         durationMs,
       });
+
+      await updateConversationUsageTotals(db, schema, record.discussionId);
     },
     async saveSummary(discussionId, summary) {
       await db
@@ -628,4 +788,48 @@ async function createDefaultConsensusRepository(): Promise<ConsensusRepository> 
         .where(eq(schema.conversations.id, discussionId));
     },
   };
+}
+
+async function loadBillingSnapshotPricing(
+  schema: typeof import('@/lib/db/schema'),
+  billingSnapshotId: string,
+  db: (typeof import('@/lib/db/index'))['db']
+): Promise<DiscussionRuntimeRecord['pricingData']> {
+  const snapshots = await db
+    .select({
+      pricingData: schema.billingSnapshots.pricingData,
+    })
+    .from(schema.billingSnapshots)
+    .where(eq(schema.billingSnapshots.id, billingSnapshotId))
+    .limit(1);
+
+  return snapshots[0]?.pricingData ?? null;
+}
+
+async function updateConversationUsageTotals(
+  db: (typeof import('@/lib/db/index'))['db'],
+  schema: typeof import('@/lib/db/schema'),
+  discussionId: string
+): Promise<void> {
+  const totals = await db
+    .select({
+      totalRawCost: sql<string>`coalesce(sum(${schema.discussionRounds.roundRawCost}), 0)`,
+      totalInputTokens: sql<number>`coalesce(sum(${schema.discussionRounds.roundInputTokens}), 0)`,
+      totalOutputTokens: sql<number>`coalesce(sum(${schema.discussionRounds.roundOutputTokens}), 0)`,
+    })
+    .from(schema.discussionRounds)
+    .where(eq(schema.discussionRounds.conversationId, discussionId))
+    .limit(1);
+
+  const aggregate = totals[0];
+
+  await db
+    .update(schema.conversations)
+    .set({
+      totalRawCost: aggregate?.totalRawCost ?? '0',
+      totalInputTokens: aggregate?.totalInputTokens ?? 0,
+      totalOutputTokens: aggregate?.totalOutputTokens ?? 0,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.conversations.id, discussionId));
 }

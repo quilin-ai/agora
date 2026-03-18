@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  IDENTITY_PATTERNS,
   anonymizeModels,
   anonymizeRoundResponses,
+  anonymizeRoundResponsesForReviewer,
   createAnonymizationMappings,
 } from '@/lib/orchestrator/anonymizer';
 import type { AnonymizationMapping, AnonymizationStore } from '@/lib/orchestrator/types';
@@ -17,9 +19,9 @@ describe('anonymizer', () => {
 
     expect(mappings).toHaveLength(3);
     expect(mappings.map((mapping) => mapping.anonymousLabel)).toEqual([
-      'Model A',
-      'Model B',
-      'Model C',
+      '选手A',
+      '选手B',
+      '选手C',
     ]);
     expect(mappings.map((mapping) => mapping.modelId)).toEqual(['m2', 'm3', 'm1']);
   });
@@ -46,28 +48,84 @@ describe('anonymizer', () => {
   it('replaces model ids with anonymous labels in review context', () => {
     const context = anonymizeRoundResponses(
       [
-        { modelId: 'm1', text: 'First answer' },
+        {
+          modelId: 'openai/gpt-5-nano',
+          text: '我作为 Claude assistant 支持这个方案。\nopenai/gpt-5-nano 也给出相同判断。',
+        },
         { modelId: 'm2', text: 'Second answer' },
       ],
       [
         {
           discussionId: 'discussion-1',
           roundNumber: 2,
-          modelId: 'm1',
-          anonymousLabel: 'Model B',
+          modelId: 'openai/gpt-5-nano',
+          anonymousLabel: '选手B',
         },
         {
           discussionId: 'discussion-1',
           roundNumber: 2,
           modelId: 'm2',
-          anonymousLabel: 'Model A',
+          anonymousLabel: '选手A',
         },
       ]
     );
 
-    expect(context).toContain('Model B');
-    expect(context).toContain('Model A');
-    expect(context).not.toContain('m1');
+    expect(context).toContain('选手B');
+    expect(context).toContain('选手A');
+    expect(context).not.toContain('openai/gpt-5-nano');
     expect(context).not.toContain('m2');
+    expect(context).not.toMatch(/claude|assistant/i);
+  });
+
+  it('excludes the reviewer from anonymous review context', () => {
+    const context = anonymizeRoundResponsesForReviewer(
+      [
+        { modelId: 'm1', text: 'Self answer' },
+        { modelId: 'm2', text: 'Peer answer A' },
+        { modelId: 'm3', text: 'Peer answer B' },
+      ],
+      [
+        {
+          discussionId: 'discussion-1',
+          roundNumber: 2,
+          modelId: 'm1',
+          anonymousLabel: '选手A',
+        },
+        {
+          discussionId: 'discussion-1',
+          roundNumber: 2,
+          modelId: 'm2',
+          anonymousLabel: '选手B',
+        },
+        {
+          discussionId: 'discussion-1',
+          roundNumber: 2,
+          modelId: 'm3',
+          anonymousLabel: '选手C',
+        },
+      ],
+      'm1'
+    );
+
+    expect(context).not.toContain('Self answer');
+    expect(context).not.toContain('选手A');
+    expect(context).toContain('选手B');
+    expect(context).toContain('Peer answer A');
+    expect(context).toContain('选手C');
+    expect(context).toContain('Peer answer B');
+  });
+
+  it('exposes identity stripping patterns for self-identification phrases', () => {
+    const samples = [
+      'I am an AI assistant.',
+      '我是一个语言模型。',
+      'model id: anthropic/claude-sonnet-4.6',
+    ];
+
+    expect(
+      samples.every((sample) =>
+        IDENTITY_PATTERNS.some((pattern) => new RegExp(pattern.source, pattern.flags).test(sample))
+      )
+    ).toBe(true);
   });
 });

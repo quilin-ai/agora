@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 
+import type { DiscussionStatus } from '@/lib/types';
+
 export type RiskLevel = 'normal' | 'sensitive' | 'high_risk';
 export type UserPlan = 'free' | 'pro' | 'pro_max' | 'ultra';
 export type DiscussionMode = 'chat' | 'council';
@@ -71,6 +73,19 @@ export interface TopicHashStore {
     topicHash: string;
     since: Date;
   }): Promise<boolean>;
+  getRecentTopicHashMatch?(params: {
+    userId: string;
+    topicHash: string;
+    since: Date;
+  }): Promise<RecentTopicHashMatch | null>;
+}
+
+export interface RecentTopicHashMatch {
+  discussionId: string;
+  status: DiscussionStatus;
+  title: string | null;
+  topic: string | null;
+  createdAt: Date;
 }
 
 export function normalizeTopic(topic: string): string {
@@ -177,6 +192,50 @@ export async function assertTopicHashNotDuplicated(params: {
   }
 }
 
+export async function findRecentTopicHashMatch(params: {
+  userId: string;
+  topicHash: string;
+  store?: TopicHashStore;
+  now?: () => Date;
+}): Promise<RecentTopicHashMatch | null> {
+  const store = params.store ?? (await createDefaultTopicHashStore());
+  const now = params.now ?? (() => new Date());
+  const since = new Date(now().getTime() - INPUT_LIMITS.duplicateWindowMs);
+
+  if (store.getRecentTopicHashMatch) {
+    return store.getRecentTopicHashMatch({
+      userId: params.userId,
+      topicHash: params.topicHash,
+      since,
+    });
+  }
+
+  const exists = await store.hasRecentTopicHash({
+    userId: params.userId,
+    topicHash: params.topicHash,
+    since,
+  });
+
+  return exists
+    ? {
+        discussionId: 'unknown',
+        status: 'created',
+        title: null,
+        topic: null,
+        createdAt: since,
+      }
+    : null;
+}
+
+export function shouldEnforceTopicDedup(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  const override = env.AGORA_DISABLE_TOPIC_DEDUP?.trim().toLowerCase();
+  if (override === '1' || override === 'true' || override === 'yes') {
+    return false;
+  }
+
+  return env.AGORA_RUNTIME_ENV !== 'test';
+}
+
 async function createDefaultTopicHashStore(): Promise<TopicHashStore> {
   const [{ db }, schema] = await Promise.all([import('@/lib/db/index'), import('@/lib/db/schema')]);
 
@@ -196,6 +255,39 @@ async function createDefaultTopicHashStore(): Promise<TopicHashStore> {
         .limit(1);
 
       return rows.length > 0;
+    },
+    async getRecentTopicHashMatch({ userId, topicHash, since }) {
+      const rows = await db
+        .select({
+          discussionId: schema.conversations.id,
+          status: schema.conversations.status,
+          title: schema.conversations.title,
+          topic: schema.conversations.topic,
+          createdAt: schema.conversations.createdAt,
+        })
+        .from(schema.conversations)
+        .where(
+          and(
+            eq(schema.conversations.userId, userId),
+            eq(schema.conversations.topicHash, topicHash),
+            gte(schema.conversations.createdAt, since)
+          )
+        )
+        .orderBy(desc(schema.conversations.createdAt))
+        .limit(1);
+
+      const row = rows[0];
+      if (!row) {
+        return null;
+      }
+
+      return {
+        discussionId: row.discussionId,
+        status: row.status,
+        title: row.title ?? null,
+        topic: row.topic ?? null,
+        createdAt: row.createdAt ?? new Date(),
+      };
     },
   };
 }

@@ -4,14 +4,20 @@ import { casTransition, validateTransition } from '@/lib/orchestrator/state-mach
 import type { DiscussionStateStore } from '@/lib/orchestrator/types';
 
 describe('state-machine', () => {
-  it('accepts the frozen whitelist transitions', () => {
+  it('accepts the full frozen whitelist transitions', () => {
     expect(validateTransition('created', 'streaming')).toBe(true);
+    expect(validateTransition('created', 'aborted')).toBe(true);
+    expect(validateTransition('created', 'failed')).toBe(true);
     expect(validateTransition('streaming', 'streaming')).toBe(true);
     expect(validateTransition('streaming', 'summarizing')).toBe(true);
+    expect(validateTransition('streaming', 'failed')).toBe(true);
+    expect(validateTransition('streaming', 'aborted')).toBe(true);
     expect(validateTransition('summarizing', 'completed')).toBe(true);
+    expect(validateTransition('summarizing', 'failed')).toBe(true);
   });
 
   it('rejects terminal or undefined transitions', () => {
+    expect(validateTransition('aborted', 'streaming')).toBe(false);
     expect(validateTransition('completed', 'streaming')).toBe(false);
     expect(validateTransition('failed', 'completed')).toBe(false);
     expect(validateTransition('created', 'completed')).toBe(false);

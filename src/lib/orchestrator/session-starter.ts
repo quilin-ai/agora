@@ -17,6 +17,12 @@ export interface SessionStarterRepository {
   getDiscussion(discussionId: string): Promise<Conversation | null>;
 }
 
+export interface StartedDiscussionSession {
+  role: 'owner' | 'observer';
+  discussion: Conversation;
+  execution: Promise<void> | null;
+}
+
 export async function startOrAttachDiscussion(params: {
   actor: ActorContext;
   discussionId: string;
@@ -24,7 +30,7 @@ export async function startOrAttachDiscussion(params: {
   repository?: SessionStarterRepository;
   lockStore?: ExecutionLockStore;
   runner?: typeof runConsensusDiscussion;
-}): Promise<{ role: 'owner' | 'observer'; discussion: Conversation }> {
+}): Promise<StartedDiscussionSession> {
   const repository = params.repository ?? (await createDefaultSessionStarterRepository());
   const runner = params.runner ?? runConsensusDiscussion;
   const discussion = await repository.getDiscussion(params.discussionId);
@@ -38,19 +44,21 @@ export async function startOrAttachDiscussion(params: {
     const lockAcquired = await acquireLock(discussion.id, lockHolder, params.lockStore);
 
     if (lockAcquired) {
-      void runner({
+      assertRunnableDiscussionState(discussion);
+
+      const execution = runner({
         discussionId: discussion.id,
         actor: params.actor,
         onEvent: params.onEvent,
         lockStore: params.lockStore,
         lockAlreadyAcquired: true,
-      }).catch(() => undefined);
+      });
 
-      return { role: 'owner', discussion };
+      return { role: 'owner', discussion, execution };
     }
   }
 
-  return { role: 'observer', discussion };
+  return { role: 'observer', discussion, execution: null };
 }
 
 async function createDefaultSessionStarterRepository(): Promise<SessionStarterRepository> {
@@ -80,6 +88,7 @@ async function createDefaultSessionStarterRepository(): Promise<SessionStarterRe
         models: discussion.models ?? [],
         title: discussion.title ?? null,
         topic: discussion.topic ?? null,
+        billingSnapshotId: discussion.billingSnapshotId ?? null,
         summary: discussion.summary ?? null,
         visibility: discussion.visibility ?? 'private',
         shareSlug: discussion.shareSlug ?? null,
@@ -103,6 +112,7 @@ function mapConversationRecord(record: {
   models: string[];
   title: string | null;
   topic: string | null;
+  billingSnapshotId: string | null;
   summary: Conversation['summary'];
   visibility: Visibility;
   shareSlug: string | null;
@@ -122,6 +132,7 @@ function mapConversationRecord(record: {
     models: record.models,
     title: record.title,
     topic: record.topic,
+    billing_snapshot_id: record.billingSnapshotId,
     summary: record.summary,
     visibility: record.visibility,
     share_slug: record.shareSlug,
@@ -130,4 +141,10 @@ function mapConversationRecord(record: {
     created_at: record.createdAt.toISOString(),
     updated_at: record.updatedAt.toISOString(),
   };
+}
+
+function assertRunnableDiscussionState(discussion: Conversation): void {
+  if (!discussion.topic?.trim() || discussion.models.length === 0 || !discussion.billing_snapshot_id) {
+    throw new Error('INVALID_DISCUSSION_STATE');
+  }
 }

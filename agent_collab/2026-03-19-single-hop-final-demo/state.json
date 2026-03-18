@@ -1,0 +1,44 @@
+{
+  "protocol_version": "LACP-v0.1",
+  "collaboration_id": "2026-03-19-single-hop-final-demo",
+  "title": "Final clean proof of Claude CLI single-hop and file-write behavior",
+  "kind": "discussion",
+  "status": "completed",
+  "phase": "close",
+  "initiator": "human",
+  "current_owner": "codex",
+  "participants": [
+    "codex",
+    "claude"
+  ],
+  "next_action": "Use the verified Claude CLI profile of single_hop_only plus proxy_recorded for future collaboration legs on this machine",
+  "last_log_entry": 5,
+  "pending_requests": [
+    {
+      "id": "req-001",
+      "to": "claude",
+      "entry_ref": 2,
+      "status": "resolved",
+      "requested_at": "2026-03-19 03:41:00",
+      "capability_mode": "proxy_recorded",
+      "delegation_mode": "single_hop_only",
+      "pickup_entry_ref": null,
+      "response_entry_ref": 4,
+      "resolution_mode": "proxy_recorded",
+      "resolved_at": "2026-03-19 03:42:10",
+      "resolved_by": "codex"
+    }
+  ],
+  "relevant_paths": [
+    "agent_collab/2026-03-19-single-hop-final-demo/topic.md",
+    "agent_collab/2026-03-19-single-hop-final-demo/log.md",
+    "agent_collab/2026-03-19-single-hop-final-demo/state.json",
+    "agent_collab/2026-03-19-single-hop-final-demo/result.md"
+  ],
+  "artifacts": [],
+  "session_hints": {
+    "codex": null,
+    "claude": null
+  },
+  "updated_at": "2026-03-19 03:42:20"
+}

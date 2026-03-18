@@ -1,0 +1,44 @@
+{
+  "protocol_version": "LACP-v0.1",
+  "collaboration_id": "2026-03-19-single-hop-proof-demo",
+  "title": "Prove whether a single-hop Claude handoff can directly write shared collaboration files",
+  "kind": "discussion",
+  "status": "completed",
+  "phase": "close",
+  "initiator": "human",
+  "current_owner": "codex",
+  "participants": [
+    "codex",
+    "claude"
+  ],
+  "next_action": "Use single_hop_only + proxy_recorded as the default Claude CLI collaboration mode in this environment",
+  "last_log_entry": 5,
+  "pending_requests": [
+    {
+      "id": "req-001",
+      "to": "claude",
+      "entry_ref": 2,
+      "status": "resolved",
+      "requested_at": "2026-03-19 03:35:00",
+      "capability_mode": "proxy_recorded",
+      "delegation_mode": "single_hop_only",
+      "pickup_entry_ref": null,
+      "response_entry_ref": 4,
+      "resolution_mode": "proxy_recorded",
+      "resolved_at": "2026-03-19 03:36:10",
+      "resolved_by": "codex"
+    }
+  ],
+  "relevant_paths": [
+    "agent_collab/2026-03-19-single-hop-proof-demo/topic.md",
+    "agent_collab/2026-03-19-single-hop-proof-demo/log.md",
+    "agent_collab/2026-03-19-single-hop-proof-demo/state.json",
+    "agent_collab/2026-03-19-single-hop-proof-demo/result.md"
+  ],
+  "artifacts": [],
+  "session_hints": {
+    "codex": null,
+    "claude": null
+  },
+  "updated_at": "2026-03-19 03:36:20"
+}

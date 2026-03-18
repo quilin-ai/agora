@@ -15,6 +15,7 @@ function createDiscussion(status: Conversation['status']): Conversation {
     models: ['m1', 'm2'],
     title: 'A discussion',
     topic: 'Topic',
+    billing_snapshot_id: 'billing-1',
     summary: null,
     visibility: 'private',
     share_slug: null,
@@ -26,6 +27,21 @@ function createDiscussion(status: Conversation['status']): Conversation {
 }
 
 describe('session-starter', () => {
+  it('throws when the discussion does not exist', async () => {
+    await expect(
+      startOrAttachDiscussion({
+        actor: { userId: 'u1', source: 'cli' },
+        discussionId: 'missing',
+        onEvent: () => undefined,
+        repository: {
+          async getDiscussion() {
+            return null;
+          },
+        },
+      })
+    ).rejects.toThrow('Discussion missing was not found');
+  });
+
   it('returns owner and starts orchestrator when a created discussion acquires the lock', async () => {
     const run = vi.fn(async () => undefined);
 
@@ -50,12 +66,44 @@ describe('session-starter', () => {
     });
 
     expect(result.role).toBe('owner');
+    expect(result.execution).toBeInstanceOf(Promise);
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         discussionId: 'd1',
         lockAlreadyAcquired: true,
       })
     );
+  });
+
+  it('throws INVALID_DISCUSSION_STATE before starting the orchestrator', async () => {
+    const run = vi.fn(async () => undefined);
+
+    await expect(
+      startOrAttachDiscussion({
+        actor: { userId: 'u1', source: 'cli' },
+        discussionId: 'd1',
+        onEvent: () => undefined,
+        repository: {
+          async getDiscussion() {
+            return {
+              ...createDiscussion('created'),
+              billing_snapshot_id: null,
+            };
+          },
+        },
+        lockStore: {
+          async acquireLock() {
+            return true;
+          },
+          async releaseLock() {
+            return true;
+          },
+        },
+        runner: run,
+      })
+    ).rejects.toThrow('INVALID_DISCUSSION_STATE');
+
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('returns observer when the lock is already held', async () => {
@@ -82,6 +130,7 @@ describe('session-starter', () => {
     });
 
     expect(result.role).toBe('observer');
+    expect(result.execution).toBeNull();
     expect(run).not.toHaveBeenCalled();
   });
 
@@ -108,6 +157,7 @@ describe('session-starter', () => {
     });
 
     expect(result.role).toBe('observer');
+    expect(result.execution).toBeNull();
     expect(acquireLock).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
   });

@@ -73,3 +73,23 @@ export const messageSchema = z
     created_at: z.string(),
   })
   .strict();
+
+export const compressedRoundStateSchema = z
+  .object({
+    round: z.number(),
+    model_positions: z.array(
+      z
+        .object({
+          logical_model_id: z.string(),
+          core_stance: z.string().min(1),
+          key_evidence: z.array(z.string()),
+          challenged_by: z.array(z.string()),
+          conceded_points: z.array(z.string()),
+        })
+        .strict()
+    ),
+    unresolved_conflicts: z.array(z.string()),
+    new_information: z.array(z.string()),
+    must_answer_in_next_round: z.array(z.string()),
+  })
+  .strict();

@@ -52,3 +52,14 @@
 ## 4. Stop Conditions
 
 - 安全能力需要新增未冻结协议字段
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 验证摘要：
+  - `src/lib/security/risk-control.ts` 已覆盖注入拦截、`topic_hash` 去重、长度上限、风险分级、Plan 日限、`normalizeTopic()`
+  - `agora ask` / `agora council run` 已真实接入输入校验路径
+  - `tests/unit/security/risk-control.test.ts` 已覆盖 U18 / U19 / U20 对应能力

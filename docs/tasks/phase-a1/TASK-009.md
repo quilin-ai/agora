@@ -46,3 +46,33 @@
 ## 4. Stop Conditions
 
 - 需要新增事件字段才能表达 retry / degraded / skipped
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 实现范围：
+  - `src/lib/orchestrator/stream-hub.ts`
+  - `src/lib/orchestrator/consensus.ts`
+  - `src/lib/openrouter/client.ts`
+  - `tests/unit/orchestrator/stream-hub.test.ts`
+  - `tests/unit/orchestrator/consensus.test.ts`
+  - `tests/unit/openrouter/client.test.ts`
+
+## 6. Delivered
+
+- 已实现 `executeRound -> streamWithRetry -> streamSingle`
+- 已接入 `MODEL_TIMEOUT_MS` 与 `MODEL_TTFT_TIMEOUT_MS`
+- 已实现 `retrying -> degraded -> skipped` 事件语义
+- 已修正 `round_done.skipped_models` 仅包含最终 skipped 的逻辑模型
+- 已将 round token / raw_cost 写入 `discussion_rounds`
+- 已将 `conversations.total_raw_cost` / `total_input_tokens` / `total_output_tokens` 做聚合更新
+
+## 7. Verification
+
+- `./run.sh test pnpm test tests/unit/orchestrator/stream-hub.test.ts tests/unit/orchestrator/consensus.test.ts tests/unit/openrouter/client.test.ts`
+- `./run.sh test pnpm test`
+- `./run.sh test pnpm typecheck`
+- `./run.sh test pnpm lint`

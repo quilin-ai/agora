@@ -48,3 +48,33 @@
 ## 4. Stop Conditions
 
 - Prompt 正文与 `v3.2` 原文存在冲突或缺失
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 实现范围：
+  - `scripts/seed-phase-a1.ts`
+  - `src/lib/orchestrator/secretary.ts`
+
+## 6. Delivered
+
+- 4 条主 prompt 已写入 `promptTemplates`
+  - Round 1 `independent`
+  - Round 2 `review`
+  - Round 3 `rebuttal`
+  - Secretary `summary`
+- 已写入 active 记录，且 `createDefaultPromptTemplateStore()` 可按 `model/mode/role/roundType` 读取
+- prompt 变量名已与新版冻结包对齐：
+  - `anonymized_round1_texts`
+  - `compressed_context`
+  - `participating_models`
+  - `compressed_rounds`
+
+## 7. Verification
+
+- `./run.sh test pnpm seed`
+- `pnpm phase-a1:smoke:paid`
+- `createDefaultPromptTemplateStore()` 已被 `consensus.ts` / `secretary.ts` 真实消费

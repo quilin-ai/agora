@@ -1,0 +1,42 @@
+{
+  "protocol_version": "LACP-v0.1",
+  "collaboration_id": "2026-03-19-async-pickup-demo",
+  "title": "Validate the revised local-agent-collab-protocol with monotonic append and async pickup semantics",
+  "kind": "discussion",
+  "status": "completed",
+  "phase": "close",
+  "initiator": "human",
+  "current_owner": "codex",
+  "participants": [
+    "codex",
+    "claude"
+  ],
+  "next_action": "Use proxy-recorded mode for constrained agents and evaluate checksum validation in a future revision",
+  "last_log_entry": 6,
+  "pending_requests": [
+    {
+      "id": "req-001",
+      "to": "claude",
+      "entry_ref": 2,
+      "status": "resolved",
+      "requested_at": "2026-03-19 03:22:00",
+      "pickup_entry_ref": null,
+      "response_entry_ref": 4,
+      "resolution_mode": "proxy_recorded",
+      "resolved_at": "2026-03-19 03:56:00",
+      "resolved_by": "codex"
+    }
+  ],
+  "relevant_paths": [
+    "agent_collab/2026-03-19-async-pickup-demo/topic.md",
+    "agent_collab/2026-03-19-async-pickup-demo/log.md",
+    "agent_collab/2026-03-19-async-pickup-demo/state.json",
+    "agent_collab/2026-03-19-async-pickup-demo/result.md"
+  ],
+  "artifacts": [],
+  "session_hints": {
+    "codex": null,
+    "claude": null
+  },
+  "updated_at": "2026-03-19 03:58:00"
+}

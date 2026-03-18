@@ -7,7 +7,9 @@ import {
   assertTopicHashNotDuplicated,
   classifyRiskLevel,
   createTopicHash,
+  findRecentTopicHashMatch,
   normalizeTopic,
+  shouldEnforceTopicDedup,
   validateTopicInput,
 } from '@/lib/security/risk-control';
 
@@ -49,6 +51,41 @@ describe('risk-control', () => {
         },
       })
     ).rejects.toThrow('last 24 hours');
+  });
+
+  it('can return the latest duplicate discussion metadata', async () => {
+    const match = await findRecentTopicHashMatch({
+      userId: 'u1',
+      topicHash: 'hash-1',
+      store: {
+        async hasRecentTopicHash() {
+          return true;
+        },
+        async getRecentTopicHashMatch() {
+          return {
+            discussionId: 'd-1',
+            status: 'completed',
+            title: 'Existing discussion',
+            topic: 'A topic',
+            createdAt: new Date('2026-03-18T00:00:00.000Z'),
+          };
+        },
+      },
+    });
+
+    expect(match).toEqual({
+      discussionId: 'd-1',
+      status: 'completed',
+      title: 'Existing discussion',
+      topic: 'A topic',
+      createdAt: new Date('2026-03-18T00:00:00.000Z'),
+    });
+  });
+
+  it('disables topic dedup in test runtime and keeps it on elsewhere', () => {
+    expect(shouldEnforceTopicDedup({ AGORA_RUNTIME_ENV: 'test' })).toBe(false);
+    expect(shouldEnforceTopicDedup({ AGORA_RUNTIME_ENV: 'prod' })).toBe(true);
+    expect(shouldEnforceTopicDedup({ AGORA_RUNTIME_ENV: 'prod', AGORA_DISABLE_TOPIC_DEDUP: 'true' })).toBe(false);
   });
 
   it('enforces plan daily limits', () => {

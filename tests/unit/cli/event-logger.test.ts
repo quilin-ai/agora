@@ -79,7 +79,7 @@ describe('EventLogger', () => {
     ).rejects.toThrow('path traversal');
   });
 
-  it('accepts all 11 valid event types', async () => {
+  it('accepts all 12 valid event types', async () => {
     const logger = await createEventLogger({
       discussionId: 'all-types',
       baseDir: testDir,
@@ -87,7 +87,7 @@ describe('EventLogger', () => {
 
     const types = [
       'progress', 'chunk', 'model_done', 'model_error',
-      'round_done', 'anonymize', 'summary', 'done',
+      'round_done', 'round_summary', 'anonymize', 'summary', 'done',
       'restore', 'error', 'interrupt_ack',
     ];
 
@@ -99,7 +99,7 @@ describe('EventLogger', () => {
 
     const content = await readFile(logger.getFilePath(), 'utf-8');
     const lines = content.trim().split('\n');
-    expect(lines).toHaveLength(11);
+    expect(lines).toHaveLength(12);
   });
 
   it('auto-creates parent directories', async () => {

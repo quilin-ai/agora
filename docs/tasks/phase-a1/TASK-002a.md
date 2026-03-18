@@ -59,3 +59,15 @@ startOrAttachDiscussion({
 ## 4. Stop Conditions
 
 - 需要新增状态或字段才能表达 owner / observer
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 验证摘要：
+  - `src/lib/orchestrator/session-starter.ts` 已统一 owner / observer 分流
+  - CLI 已通过同一路径启动 discussion，不再各写一套
+  - owner 路径与 observer attach 路径都已通过真实 CLI 触发
+  - `tests/unit/orchestrator/session-starter.test.ts` 已覆盖重复启动保护与 owner / observer 语义

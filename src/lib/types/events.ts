@@ -8,6 +8,7 @@ export type SSEEventType =
   | 'model_done'
   | 'model_error'
   | 'round_done'
+  | 'round_summary'
   | 'anonymize'
   | 'summary'
   | 'done'
@@ -68,6 +69,12 @@ export interface SSEAnonymizeEvent {
   seq: number;
 }
 
+export interface SSERoundSummaryEvent extends DiscussionSummaryFinal {
+  round: number;
+  next_round: number | null;
+  seq: number;
+}
+
 export interface SSESummaryEvent extends DiscussionSummaryFinal {
   seq: number;
 }
@@ -106,6 +113,7 @@ export type ChunkEvent = { type: 'chunk'; data: SSEChunkEvent };
 export type ModelDoneEvent = { type: 'model_done'; data: SSEModelDoneEvent };
 export type ModelErrorEvent = { type: 'model_error'; data: SSEModelErrorEvent };
 export type RoundDoneEvent = { type: 'round_done'; data: SSERoundDoneEvent };
+export type RoundSummaryEvent = { type: 'round_summary'; data: SSERoundSummaryEvent };
 export type AnonymizeEvent = { type: 'anonymize'; data: SSEAnonymizeEvent };
 export type SummaryEvent = { type: 'summary'; data: SSESummaryEvent };
 export type DoneEvent = { type: 'done'; data: SSEDoneEvent };
@@ -119,6 +127,7 @@ export type SSEEvent =
   | ModelDoneEvent
   | ModelErrorEvent
   | RoundDoneEvent
+  | RoundSummaryEvent
   | AnonymizeEvent
   | SummaryEvent
   | DoneEvent

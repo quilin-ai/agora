@@ -1,4 +1,10 @@
-import type { BillingCost, DiscussionStatus, DiscussionSummaryFinal, SSEEvent } from '@/lib/types';
+import type {
+  BillingCost,
+  CompressedRoundState,
+  DiscussionStatus,
+  DiscussionSummaryFinal,
+  SSEEvent,
+} from '@/lib/types';
 import type { ModelFailureRecord } from '@/lib/types';
 
 export interface DiscussionRuntimeRecord {
@@ -10,6 +16,8 @@ export interface DiscussionRuntimeRecord {
   lastCompletedRound: number;
   modelIds: string[];
   summary: DiscussionSummaryFinal | null;
+  billingSnapshotId?: string | null;
+  pricingData?: Record<string, { input: number; output: number }> | null;
 }
 
 export interface RoundModelResponse {
@@ -18,7 +26,10 @@ export interface RoundModelResponse {
   round: number;
   text: string;
   inputTokens: number;
-  tokens: number;
+  outputTokens: number;
+  rawCost: number;
+  ttftMs: number | null;
+  latencyMs: number;
 }
 
 export interface RoundPersistenceRecord {
@@ -27,6 +38,10 @@ export interface RoundPersistenceRecord {
   status: 'completed' | 'partial' | 'failed';
   modelResponses: RoundModelResponse[];
   failedModels?: ModelFailureRecord[];
+  compressedState?: CompressedRoundState | null;
+  roundRawCost?: number;
+  roundInputTokens?: number;
+  roundOutputTokens?: number;
   startedAt?: Date;
   completedAt?: Date;
 }
@@ -76,6 +91,7 @@ export interface CompletionRequest {
   }>;
   temperature?: number;
   timeoutMs?: number;
+  signal?: globalThis.AbortSignal;
   responseFormat?: {
     type: 'json_object';
   };
@@ -182,6 +198,12 @@ export interface StreamHub {
     failedModels: ModelFailureRecord[];
     totalModels: number;
   }): void;
+  roundSummary(
+    discussionId: string,
+    round: number,
+    nextRound: number | null,
+    summary: DiscussionSummaryFinal
+  ): void;
   anonymize(discussionId: string, round: number, labels: string[]): void;
   summary(discussionId: string, summary: DiscussionSummaryFinal): void;
   done(discussionId: string, billing: BillingCost): void;
@@ -198,6 +220,10 @@ export interface StreamHub {
 export interface RoundExecutionResult {
   responses: RoundModelResponse[];
   failures: ModelFailureRecord[];
+  compressedState: CompressedRoundState;
+  roundRawCost: number;
+  roundInputTokens: number;
+  roundOutputTokens: number;
 }
 
 export interface ContextSection {

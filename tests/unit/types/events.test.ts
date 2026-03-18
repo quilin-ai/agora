@@ -17,6 +17,7 @@ import type {
   ModelDoneEvent,
   ModelErrorEvent,
   ProgressEvent,
+  RoundSummaryEvent,
   RestoreEvent,
   RoundDoneEvent,
   RoundNumber,
@@ -80,13 +81,14 @@ describe('type definitions compile-time checks', () => {
     expect(transitions).toHaveLength(9);
   });
 
-  it('SSEEventType covers exactly 11 event types', () => {
+  it('SSEEventType covers exactly 12 event types', () => {
     const types: SSEEventType[] = [
       'progress',
       'chunk',
       'model_done',
       'model_error',
       'round_done',
+      'round_summary',
       'anonymize',
       'summary',
       'done',
@@ -94,7 +96,7 @@ describe('type definitions compile-time checks', () => {
       'error',
       'interrupt_ack',
     ];
-    expect(types).toHaveLength(11);
+    expect(types).toHaveLength(12);
   });
 
   it('SSEEvent discriminated union works with type narrowing', () => {
@@ -115,7 +117,7 @@ describe('type definitions compile-time checks', () => {
     }
   });
 
-  it('all 11 SSEEvent variants can be constructed', () => {
+  it('all 12 SSEEvent variants can be constructed', () => {
     const summary: DiscussionSummaryFinal = {
       consensus: [
         {
@@ -184,13 +186,17 @@ describe('type definitions compile-time checks', () => {
         },
       } satisfies RoundDoneEvent,
       {
+        type: 'round_summary',
+        data: { round: 1, next_round: 2, ...summary, seq: 6 },
+      } satisfies RoundSummaryEvent,
+      {
         type: 'anonymize',
-        data: { round: 2, labels: ['Model A', 'Model B'], seq: 6 },
+        data: { round: 2, labels: ['Model A', 'Model B'], seq: 7 },
       } satisfies AnonymizeEvent,
-      { type: 'summary', data: { ...summary, seq: 7 } } satisfies SummaryEvent,
+      { type: 'summary', data: { ...summary, seq: 8 } } satisfies SummaryEvent,
       {
         type: 'done',
-        data: { total_raw_cost: 0.08, total_platform_price: 0.1, seq: 8 },
+        data: { total_raw_cost: 0.08, total_platform_price: 0.1, seq: 9 },
       } satisfies DoneEvent,
       {
         type: 'restore',
@@ -207,11 +213,11 @@ describe('type definitions compile-time checks', () => {
       { type: 'error', data: { code: 'ERR', message: 'boom' } } satisfies ErrorEvent,
       {
         type: 'interrupt_ack',
-        data: { status: 'acknowledged', message: 'accepted', seq: 9 },
+        data: { status: 'acknowledged', message: 'accepted', seq: 10 },
       } satisfies InterruptAckEvent,
     ];
 
-    expect(events).toHaveLength(11);
+    expect(events).toHaveLength(12);
   });
 
   it('CreditTransactionType covers 7 values', () => {

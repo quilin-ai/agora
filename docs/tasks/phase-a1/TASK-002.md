@@ -76,3 +76,15 @@ tests/unit/db/*.test.ts
 
 - 发现 `v3.2` schema 自相矛盾
 - 需要擅自删减冻结字段才能通过实现
+
+---
+
+## 6. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 验证摘要：
+  - 11 张表 schema / 索引 / 约束已落地
+  - `./run.sh test pnpm drizzle-kit push` 已在 test DB 成功建表
+  - `./run.sh test pnpm seed` 已写入 `billing_snapshots`、CLI test user、4 条 active prompt templates
+  - `tests/unit/db/schema.test.ts` 已覆盖冻结字段与关键索引

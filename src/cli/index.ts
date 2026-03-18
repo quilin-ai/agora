@@ -3,8 +3,8 @@
 import { Command } from 'commander';
 import { fileURLToPath } from 'node:url';
 
-import { registerAskCommand } from './commands/ask';
-import { registerCouncilCommands } from './commands/council-run';
+import { registerAskCommand } from '@/cli/commands/ask';
+import { registerCouncilCommands } from '@/cli/commands/council-run';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -32,5 +32,9 @@ function isCliEntrypoint(): boolean {
 
 if (isCliEntrypoint()) {
   const program = createProgram();
-  program.parse();
+  void program.parseAsync().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exitCode = 1;
+  });
 }

@@ -7,6 +7,7 @@ export interface AgoraModelConfig {
   allowedModels: string[];
   defaultCouncilModels: string[];
   secretaryModel: string;
+  roundSummaryModel: string | null;
 }
 
 export class ModelConfigError extends Error {
@@ -37,6 +38,7 @@ export function loadAgoraModelConfig(env: ModelEnv = process.env): AgoraModelCon
   const allowedModels = parseModelList(env.AGORA_ALLOWED_MODELS);
   const defaultCouncilModels = parseModelList(env.AGORA_DEFAULT_COUNCIL_MODELS);
   const secretaryModel = env.AGORA_SECRETARY_MODEL?.trim();
+  const roundSummaryModel = env.AGORA_ROUND_SUMMARY_MODEL?.trim() || null;
 
   if (allowedModels.length === 0) {
     throw new ModelConfigError(
@@ -66,11 +68,18 @@ export function loadAgoraModelConfig(env: ModelEnv = process.env): AgoraModelCon
     );
   }
 
+  if (roundSummaryModel && !allowedModels.includes(roundSummaryModel)) {
+    throw new ModelConfigError(
+      `AGORA_ROUND_SUMMARY_MODEL must be present in AGORA_ALLOWED_MODELS: ${roundSummaryModel}`
+    );
+  }
+
   return {
     source,
     allowedModels,
     defaultCouncilModels,
     secretaryModel: resolvedSecretaryModel,
+    roundSummaryModel,
   };
 }
 

@@ -53,3 +53,31 @@
 
 - 需要新增 CLI 专属事件
 - 需要把 JSONL 当 canonical state
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 实现范围：
+  - `src/cli/index.ts`
+  - `src/cli/event-logger.ts`
+  - `src/cli/commands/ask.ts`
+  - `src/cli/commands/council-run.ts`
+  - `tests/unit/cli/index.test.ts`
+  - `tests/unit/cli/event-logger.test.ts`
+
+## 6. Delivered
+
+- 已建立 commander CLI 骨架与 `agora --help` 根命令入口
+- 已建立 `ask` / `council run` 命令注册结构
+- 已建立 `.agora/sessions/{discussionId}.events.jsonl` JSONL 事件日志能力
+- 已补齐路径安全校验、事件类型白名单与追加写入语义
+
+## 7. Verification
+
+- `./run.sh test pnpm agora --help`
+- `./run.sh test pnpm test tests/unit/cli/index.test.ts tests/unit/cli/event-logger.test.ts`
+- `./run.sh test pnpm lint`
+- `./run.sh test pnpm typecheck`

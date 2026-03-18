@@ -20,12 +20,14 @@ describe('model configuration', () => {
       AGORA_ALLOWED_MODELS: 'm1,m2,m3,m4',
       AGORA_DEFAULT_COUNCIL_MODELS: 'm1,m2,m3',
       AGORA_SECRETARY_MODEL: 'm4',
+      AGORA_ROUND_SUMMARY_MODEL: 'm2',
     });
 
     expect(config.source).toBe('openrouter');
     expect(config.allowedModels).toEqual(['m1', 'm2', 'm3', 'm4']);
     expect(config.defaultCouncilModels).toEqual(['m1', 'm2', 'm3']);
     expect(config.secretaryModel).toBe('m4');
+    expect(config.roundSummaryModel).toBe('m2');
   });
 
   it('falls back to the first council model when secretary model is omitted', () => {
@@ -35,6 +37,21 @@ describe('model configuration', () => {
     });
 
     expect(config.secretaryModel).toBe('m1');
+    expect(config.roundSummaryModel).toBeNull();
+  });
+
+  it('rejects round summary model outside the whitelist', () => {
+    expect(() =>
+      loadAgoraModelConfig({
+        AGORA_ALLOWED_MODELS: 'm1,m2',
+        AGORA_DEFAULT_COUNCIL_MODELS: 'm1,m2',
+        AGORA_ROUND_SUMMARY_MODEL: 'm3',
+      })
+    ).toThrowError(
+      new ModelConfigError(
+        'AGORA_ROUND_SUMMARY_MODEL must be present in AGORA_ALLOWED_MODELS: m3'
+      )
+    );
   });
 
   it('rejects unsupported model sources', () => {

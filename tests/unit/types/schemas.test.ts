@@ -134,7 +134,7 @@ describe('zod schemas', () => {
     ).toBe(false);
   });
 
-  it('parses all 11 SSE event types successfully', () => {
+  it('parses all 12 SSE event types successfully', () => {
     const summary = {
       consensus: [
         {
@@ -199,9 +199,10 @@ describe('zod schemas', () => {
           seq: 5,
         },
       },
-      { type: 'anonymize', data: { round: 2, labels: ['A', 'B'], seq: 6 } },
-      { type: 'summary', data: { ...summary, seq: 7 } },
-      { type: 'done', data: { total_raw_cost: 0.08, total_platform_price: 0.1, seq: 8 } },
+      { type: 'round_summary', data: { round: 1, next_round: 2, ...summary, seq: 6 } },
+      { type: 'anonymize', data: { round: 2, labels: ['A', 'B'], seq: 7 } },
+      { type: 'summary', data: { ...summary, seq: 8 } },
+      { type: 'done', data: { total_raw_cost: 0.08, total_platform_price: 0.1, seq: 9 } },
       {
         type: 'restore',
         data: {
@@ -217,7 +218,7 @@ describe('zod schemas', () => {
       { type: 'error', data: { code: 'ERR', message: 'boom' } },
       {
         type: 'interrupt_ack',
-        data: { status: 'acknowledged', message: 'accepted', seq: 9 },
+        data: { status: 'acknowledged', message: 'accepted', seq: 10 },
       },
     ] as const;
 
@@ -225,7 +226,7 @@ describe('zod schemas', () => {
       expect(() => sseEventSchema.parse(sample)).not.toThrow();
     }
 
-    expect(samples).toHaveLength(11);
+    expect(samples).toHaveLength(12);
   });
 
   it('keeps z.infer results compatible with shared types', () => {

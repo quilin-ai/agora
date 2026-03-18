@@ -144,6 +144,33 @@ describe('openrouter client', () => {
     ).rejects.toThrow('provider unavailable');
   });
 
+  it('surfaces external abort reasons from the caller signal', async () => {
+    const client = createOpenRouterClient({
+      env: {
+        OPENROUTER_API_KEY: 'test-key',
+      },
+      fetchImpl: async (_input, init) => {
+        const signal = init?.signal as globalThis.AbortSignal;
+
+        return await new Promise<globalThis.Response>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(new globalThis.DOMException('aborted', 'AbortError'));
+          });
+        });
+      },
+    });
+    const controller = new globalThis.AbortController();
+    const run = client.complete({
+      model: 'openai/gpt-5.2',
+      messages: [{ role: 'user', content: 'hello' }],
+      signal: controller.signal,
+    });
+
+    controller.abort('TTFT timeout after 15000ms');
+
+    await expect(run).rejects.toThrow('TTFT timeout after 15000ms');
+  });
+
   it('exports stream parsing helpers', async () => {
     expect(normalizeMessageContent([{ text: 'ab' }, 'cd'])).toBe('abcd');
 

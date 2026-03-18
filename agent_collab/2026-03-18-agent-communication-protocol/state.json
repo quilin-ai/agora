@@ -1,0 +1,31 @@
+{
+  "protocol_version": "LACP-v0.1",
+  "collaboration_id": "2026-03-18-agent-communication-protocol",
+  "title": "Design a local multi-agent collaboration protocol",
+  "kind": "discussion",
+  "status": "completed",
+  "phase": "close",
+  "initiator": "codex",
+  "current_owner": "codex",
+  "participants": [
+    "codex",
+    "claude"
+  ],
+  "next_action": "Use the revised skill in future real collaborations and validate async pickup in practice",
+  "last_log_entry": 8,
+  "relevant_paths": [
+    "agent_collab/2026-03-18-agent-communication-protocol/topic.md",
+    "agent_collab/2026-03-18-agent-communication-protocol/log.md",
+    "agent_collab/2026-03-18-agent-communication-protocol/result.md",
+    "agent_collab/2026-03-18-agent-communication-protocol/protocol.md"
+  ],
+  "artifacts": [
+    "agent_collab/2026-03-18-agent-communication-protocol/protocol.md",
+    "/Users/raysonmeng/.codex/skills/local-agent-collab-protocol"
+  ],
+  "session_hints": {
+    "codex": null,
+    "claude": null
+  },
+  "updated_at": "2026-03-19 03:15:00"
+}

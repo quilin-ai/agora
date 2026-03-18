@@ -130,31 +130,34 @@ async function postChatCompletion(params: {
   const timeoutMs = params.request.timeoutMs ?? DEFAULT_OPENROUTER_TIMEOUT_MS;
   const controller = new globalThis.AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = params.request.signal
+    ? globalThis.AbortSignal.any([controller.signal, params.request.signal])
+    : controller.signal;
 
   try {
     const fetchImpl = params.fetchImpl ?? globalThis.fetch;
     const response = await fetchImpl(
       `${env.OPENROUTER_BASE_URL ?? DEFAULT_OPENROUTER_BASE_URL}/chat/completions`,
       {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        ...(env.OPENROUTER_HTTP_REFERER
-          ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER }
-          : {}),
-        ...(env.OPENROUTER_APP_TITLE
-          ? { 'X-Title': env.OPENROUTER_APP_TITLE }
-          : {}),
-      },
-      body: JSON.stringify({
-        model: params.request.model,
-        messages: params.request.messages,
-        temperature: params.request.temperature,
-        response_format: params.request.responseFormat,
-        stream: params.stream,
-      }),
-      signal: controller.signal,
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          ...(env.OPENROUTER_HTTP_REFERER
+            ? { 'HTTP-Referer': env.OPENROUTER_HTTP_REFERER }
+            : {}),
+          ...(env.OPENROUTER_APP_TITLE
+            ? { 'X-Title': env.OPENROUTER_APP_TITLE }
+            : {}),
+        },
+        body: JSON.stringify({
+          model: params.request.model,
+          messages: params.request.messages,
+          temperature: params.request.temperature,
+          response_format: params.request.responseFormat,
+          stream: params.stream,
+        }),
+        signal,
       }
     );
 
@@ -176,6 +179,15 @@ async function postChatCompletion(params: {
     return response;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
+      const abortReason =
+        params.request.signal?.aborted && typeof params.request.signal.reason === 'string'
+          ? params.request.signal.reason
+          : null;
+
+      if (abortReason) {
+        throw new Error(abortReason, { cause: error });
+      }
+
       throw new Error(`OpenRouter request timed out after ${timeoutMs}ms`, { cause: error });
     }
 

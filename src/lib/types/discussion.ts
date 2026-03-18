@@ -72,6 +72,7 @@ export interface Conversation {
   max_rounds?: number;
   title: string | null;
   topic: string | null;
+  billing_snapshot_id?: string | null;
   summary: DiscussionSummaryFinal | null;
   visibility: Visibility;
   share_slug: string | null;

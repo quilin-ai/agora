@@ -43,3 +43,27 @@
 ## 4. Stop Conditions
 
 - 需要 reveal 机制才能完成 MVP
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 实现范围：
+  - `src/lib/orchestrator/anonymizer.ts`
+  - `tests/unit/orchestrator/anonymizer.test.ts`
+
+## 6. Delivered
+
+- 匿名标签已统一为 `选手A / 选手B / ...`
+- `IDENTITY_PATTERNS` 已落地
+- Round 2 review context 已接入 identity stripping
+- 映射持久化仍写入 `discussion_anonymization_maps`
+- 前端与事件流仍只接收匿名标签，不暴露真实映射
+
+## 7. Verification
+
+- `./run.sh test pnpm test tests/unit/orchestrator/anonymizer.test.ts tests/unit/orchestrator/consensus.test.ts`
+- `./run.sh test pnpm typecheck`
+- `./run.sh test pnpm lint`

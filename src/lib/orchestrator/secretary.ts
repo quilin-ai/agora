@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import type { SecretaryRawOutput } from '@/lib/types';
 import { discussionSummaryFinalSchema, secretaryRawOutputSchema } from '@/lib/types/schemas';
@@ -8,8 +8,10 @@ import { createOpenRouterClient } from '@/lib/openrouter/client';
 import type {
   CompletionResult,
   OpenRouterClient,
+  PromptTemplateRecord,
   PromptTemplateStore,
 } from './types';
+import { buildSecretaryPromptVariables } from './prompt-variables';
 import { OrchestratorError, PromptTemplateMissingError } from './types';
 
 export interface RunSecretarySummaryParams {
@@ -23,27 +25,63 @@ export interface RunSecretarySummaryParams {
   now?: () => Date;
 }
 
+export interface RunSecretaryRoundSummaryParams extends RunSecretarySummaryParams {
+  round: number;
+}
+
 const DEFAULT_DISCLAIMER =
   '⚠️ 本讨论为 AI 模拟审议，不构成财务、法律、医疗或其他专业建议。所有结论仅供参考，最终决策权归用户所有。';
 
 export async function runSecretarySummary(
   params: RunSecretarySummaryParams
 ) {
+  return runSecretarySummaryWithScope({
+    ...params,
+    scope: {
+      kind: 'final',
+    },
+  });
+}
+
+export async function runSecretaryRoundSummary(
+  params: RunSecretaryRoundSummaryParams
+) {
+  return runSecretarySummaryWithScope({
+    ...params,
+    scope: {
+      kind: 'round',
+      round: params.round,
+    },
+  });
+}
+
+async function runSecretarySummaryWithScope(
+  params: RunSecretarySummaryParams & {
+    scope:
+      | {
+          kind: 'final';
+        }
+      | {
+          kind: 'round';
+          round: number;
+        };
+  }
+) {
   const promptStore = params.promptStore ?? (await createDefaultPromptTemplateStore());
   const client = params.client ?? createOpenRouterClient();
   const template = await promptStore.getActiveTemplate({
     modelId: params.secretaryModelId,
-    mode: 'summary',
+    mode: 'consensus',
     role: 'secretary',
-    roundType: 'all',
+    roundType: 'summary',
   });
 
   if (!template.content.trim()) {
     throw new PromptTemplateMissingError({
       modelId: params.secretaryModelId,
-      mode: 'summary',
+      mode: 'consensus',
       role: 'secretary',
-      roundType: 'all',
+      roundType: 'summary',
     });
   }
 
@@ -63,17 +101,15 @@ export async function runSecretarySummary(
               topic: params.topic,
               context: params.context,
               discussionId: params.discussionId,
+              participantModelIds: params.participantModelIds ?? [],
               strictRetry,
+              scope: params.scope,
             }),
           },
         ],
       });
 
-      return parseSecretaryCompletion(
-        completion,
-        params.secretaryModelId,
-        params.participantModelIds ?? []
-      );
+      return parseSecretaryCompletion(completion, params.participantModelIds ?? []);
     } catch (error) {
       lastError = error;
     }
@@ -83,6 +119,7 @@ export async function runSecretarySummary(
     topic: params.topic,
     secretaryModelId: params.secretaryModelId,
     cause: lastError,
+    round: params.scope.kind === 'round' ? params.scope.round : null,
   });
 }
 
@@ -103,24 +140,14 @@ export function renderPromptTemplate(
     .join('\n\n');
 }
 
-function parseSecretaryCompletion(
-  completion: CompletionResult,
-  secretaryModelId: string,
-  participantModelIds: string[]
-) {
+function parseSecretaryCompletion(completion: CompletionResult, participantModelIds: string[]) {
   const rawOutput = secretaryRawOutputSchema.parse(extractJsonPayload(completion.text));
   validateSummarySemantics(rawOutput, participantModelIds);
 
-  return finalizeSummary(rawOutput, secretaryModelId, false);
+  return finalizeSummary(rawOutput, false);
 }
 
-function finalizeSummary(
-  rawOutput: SecretaryRawOutput,
-  secretaryModelId: string,
-  isDegraded: boolean
-) {
-  void secretaryModelId;
-
+function finalizeSummary(rawOutput: SecretaryRawOutput, isDegraded: boolean) {
   return discussionSummaryFinalSchema.parse({
     ...rawOutput,
     disclaimer: DEFAULT_DISCLAIMER,
@@ -182,21 +209,44 @@ function buildSecretaryPrompt(params: {
   topic: string;
   context: string;
   discussionId: string;
+  participantModelIds: string[];
   strictRetry: boolean;
+  scope:
+    | {
+        kind: 'final';
+      }
+    | {
+        kind: 'round';
+        round: number;
+      };
 }): string {
-  const basePrompt = renderPromptTemplate(params.template, {
-    topic: params.topic,
-    context: params.context,
-    discussion_id: params.discussionId,
-  });
+  const basePrompt = renderPromptTemplate(
+    params.template,
+    buildSecretaryPromptVariables({
+      topic: params.topic,
+      context: params.context,
+      discussionId: params.discussionId,
+      participantModelIds: params.participantModelIds,
+    })
+  );
+  const scopeInstruction =
+    params.scope.kind === 'round'
+      ? `你现在输出的是第 ${params.scope.round} 轮结束后的中间总结，不是最终裁决。请提炼当前共识、主要分歧、下一轮必须回答的问题，并给出暂时性 recommendation。`
+      : '你现在输出的是整场 3 轮讨论结束后的最终书记员总结。请基于完整上下文给出最终 recommendation、confidence、分歧和待确认问题。';
 
   if (!params.strictRetry) {
-    return basePrompt;
+    return [basePrompt, scopeInstruction].join('\n\n');
   }
 
   return [
     basePrompt,
-    '上一次你的输出 JSON 格式或语义不正确。请严格按照既定 schema 输出纯 JSON，不要添加任何额外文字。',
+    scopeInstruction,
+    '上一次你的输出 JSON 格式不正确。请严格按照以下规则重新输出：',
+    '1. 只输出纯 JSON，不要 ```json 标记',
+    '2. 所有字段必须存在',
+    '3. consensus 至少 1 条',
+    '4. disagreements 的 positions 至少 2 个',
+    '5. recommendation 至少 10 个字',
   ].join('\n\n');
 }
 
@@ -204,15 +254,20 @@ function buildDegradedSummary(params: {
   topic: string;
   secretaryModelId: string;
   cause: unknown;
+  round: number | null;
 }) {
   const causeMessage =
     params.cause instanceof Error ? params.cause.message : 'Secretary output validation failed';
+  const topicPrefix =
+    params.round === null
+      ? `关于“${params.topic}”的总结已降级生成`
+      : `关于“${params.topic}”的第 ${params.round} 轮中间总结已降级生成`;
 
   return finalizeSummary(
     {
       consensus: [
         {
-          content: `关于“${params.topic}”的总结已降级生成，建议人工复核原始讨论记录。`,
+          content: `${topicPrefix}，建议人工复核原始讨论记录。`,
           supporting_models: [],
           evidence_refs: [],
         },
@@ -224,7 +279,6 @@ function buildDegradedSummary(params: {
       evidence_refs: [],
       decision_boundary: '需结合原始轮次输出进行人工判断。',
     },
-    params.secretaryModelId,
     true
   );
 }
@@ -266,16 +320,18 @@ export async function createDefaultPromptTemplateStore(): Promise<PromptTemplate
         .from(schema.promptTemplates)
         .where(
           and(
-            eq(schema.promptTemplates.model, lookup.modelId),
-            eq(schema.promptTemplates.mode, lookup.mode),
-            eq(schema.promptTemplates.role, lookup.role),
-            eq(schema.promptTemplates.roundType, lookup.roundType),
+            inArray(schema.promptTemplates.model, [lookup.modelId, 'all']),
+            inArray(schema.promptTemplates.mode, [lookup.mode, 'all']),
+            inArray(schema.promptTemplates.role, [lookup.role, 'all']),
+            inArray(schema.promptTemplates.roundType, [lookup.roundType, 'all']),
             eq(schema.promptTemplates.isActive, true)
           )
         )
-        .limit(1);
+        .limit(16);
 
-      const template = records[0];
+      const template = records
+        .slice()
+        .sort((left, right) => scoreTemplate(right, lookup) - scoreTemplate(left, lookup))[0];
 
       if (!template) {
         throw new PromptTemplateMissingError(lookup);
@@ -284,4 +340,21 @@ export async function createDefaultPromptTemplateStore(): Promise<PromptTemplate
       return template;
     },
   };
+}
+
+function scoreTemplate(
+  template: PromptTemplateRecord,
+  lookup: {
+    modelId: string;
+    mode: string;
+    role: string;
+    roundType: string;
+  }
+): number {
+  return (
+    Number(template.model === lookup.modelId) * 8 +
+    Number(template.mode === lookup.mode) * 4 +
+    Number(template.role === lookup.role) * 2 +
+    Number(template.roundType === lookup.roundType)
+  );
 }

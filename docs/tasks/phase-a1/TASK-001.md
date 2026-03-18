@@ -73,3 +73,36 @@ src/lib/db/index.ts
 
 - 技术栈版本与 `技术文档.md` 当前最新稳定版本基线冲突
 - 无法建立基础数据库连接
+
+---
+
+## 6. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 实现范围：
+  - `package.json`
+  - `.nvmrc`
+  - `tsconfig.json`
+  - `eslint.config.mjs`
+  - `run.sh`
+  - `.env.test.example`
+  - `.env.prod.example`
+  - `src/lib/`
+  - `src/cli/`
+  - `src/app/`
+  - `src/lib/db/index.ts`
+
+## 7. Delivered
+
+- 已建立与 `技术文档.md` 对齐的基础工程目录与运行时版本基线
+- 已补齐 `dev / build / lint / typecheck / test` 基础脚本
+- 已补齐 test / prod 环境模板与 `run.sh` 环境切换脚本
+- 已建立 Drizzle / PostgreSQL 的基础接入入口
+
+## 8. Verification
+
+- `./run.sh test pnpm lint`
+- `./run.sh test pnpm typecheck`
+- `./run.sh test pnpm test`
+- `./run.sh test pnpm agora --help`

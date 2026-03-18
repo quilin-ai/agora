@@ -59,6 +59,7 @@ fi
 
 set -a
 . "$env_file"
+AGORA_RUNTIME_ENV="$env_name"
 set +a
 
 cd "$SCRIPT_DIR"

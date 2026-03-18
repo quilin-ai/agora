@@ -4,7 +4,7 @@ export const consensusPointSchema = z
   .object({
     content: z.string().min(1),
     supporting_models: z.array(z.string()),
-    evidence_refs: z.array(z.string()),
+    evidence_refs: z.array(z.string()).default([]),
   })
   .strict();
 
@@ -36,9 +36,9 @@ export const secretaryRawOutputSchema = z
     disagreements: z.array(disagreementPointSchema),
     recommendation: z.string().min(10),
     confidence: z.enum(['high', 'medium', 'low']),
-    open_questions: z.array(z.string()),
+    open_questions: z.array(z.string()).default([]),
     decision_boundary: z.string().optional(),
-    evidence_refs: z.array(z.string()),
+    evidence_refs: z.array(z.string()).default([]),
   })
   .strict();
 

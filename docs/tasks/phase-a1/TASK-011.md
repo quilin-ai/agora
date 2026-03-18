@@ -46,3 +46,30 @@
 ## 4. Stop Conditions
 
 - 需要修改冻结 Prompt 或 Summary 契约才能通过
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 实现范围：
+  - `src/lib/orchestrator/secretary.ts`
+  - `src/lib/types/schemas/secretary.schema.ts`
+  - `tests/unit/orchestrator/secretary.test.ts`
+
+## 6. Delivered
+
+- 已实现 `SecretaryRawOutputSchema -> validateSemantics -> DiscussionSummaryFinal` 唯一路径
+- 已实现 invalid JSON strict retry
+- 已实现语义校验：
+  - unknown supporting model
+  - unknown disagreement model
+  - `confidence=high` 且缺少 evidence
+- 已实现 degraded fallback summary
+
+## 7. Verification
+
+- `./run.sh test pnpm test tests/unit/orchestrator/secretary.test.ts tests/unit/orchestrator/context-manager.test.ts tests/unit/orchestrator/consensus.test.ts`
+- `./run.sh test pnpm typecheck`
+- `./run.sh test pnpm lint`

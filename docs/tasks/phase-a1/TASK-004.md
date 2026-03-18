@@ -52,3 +52,15 @@
 ## 4. Stop Conditions
 
 - OpenRouter 协议与 `v3.2` 冻结接口冲突
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 验证摘要：
+  - `src/lib/openrouter/client.ts` 已同时支持流式与非流式
+  - 模型白名单与默认模型解析已统一收敛到 `src/lib/config/models.ts`
+  - `agora ask` 与 `agora council run` 已真实消费 OpenRouter 适配层
+  - `tests/unit/openrouter/client.test.ts` 与 paid smoke path 已完成验证

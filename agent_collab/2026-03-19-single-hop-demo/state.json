@@ -1,0 +1,50 @@
+{
+  "protocol_version": "LACP-v0.1",
+  "collaboration_id": "2026-03-19-single-hop-demo",
+  "title": "Validate single_hop_only behavior for a local agent collaboration handoff",
+  "kind": "discussion",
+  "status": "waiting_on_agent",
+  "phase": "review",
+  "initiator": "human",
+  "current_owner": "codex",
+  "participants": [
+    "codex",
+    "claude"
+  ],
+  "next_action": "Wait for Claude to answer the resent single-hop request after the local quoting failure",
+  "last_log_entry": 4,
+  "pending_requests": [
+    {
+      "id": "req-001",
+      "to": "claude",
+      "entry_ref": 2,
+      "status": "failed",
+      "requested_at": "2026-03-19 03:30:00",
+      "capability_mode": "proxy_recorded",
+      "delegation_mode": "single_hop_only",
+      "failed_at": "2026-03-19 03:29:55",
+      "failure_reason": "sender_shell_quoting_error"
+    },
+    {
+      "id": "req-002",
+      "to": "claude",
+      "entry_ref": 4,
+      "status": "pending",
+      "requested_at": "2026-03-19 03:30:10",
+      "capability_mode": "proxy_recorded",
+      "delegation_mode": "single_hop_only"
+    }
+  ],
+  "relevant_paths": [
+    "agent_collab/2026-03-19-single-hop-demo/topic.md",
+    "agent_collab/2026-03-19-single-hop-demo/log.md",
+    "agent_collab/2026-03-19-single-hop-demo/state.json",
+    "agent_collab/2026-03-19-single-hop-demo/result.md"
+  ],
+  "artifacts": [],
+  "session_hints": {
+    "codex": null,
+    "claude": null
+  },
+  "updated_at": "2026-03-19 03:30:10"
+}

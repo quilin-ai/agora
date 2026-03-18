@@ -9,6 +9,7 @@ export const sseEventTypeSchema = z.enum([
   'model_done',
   'model_error',
   'round_done',
+  'round_summary',
   'anonymize',
   'summary',
   'done',
@@ -123,6 +124,19 @@ export const anonymizeEventSchema = z
   })
   .strict();
 
+export const roundSummaryEventSchema = z
+  .object({
+    type: z.literal('round_summary'),
+    data: discussionSummaryFinalSchema
+      .extend({
+        round: z.number(),
+        next_round: z.number().nullable(),
+        seq: z.number(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const summaryEventSchema = z
   .object({
     type: z.literal('summary'),
@@ -202,6 +216,7 @@ export const sseEventSchema = z.discriminatedUnion('type', [
   modelDoneEventSchema,
   modelErrorEventSchema,
   roundDoneEventSchema,
+  roundSummaryEventSchema,
   anonymizeEventSchema,
   summaryEventSchema,
   doneEventSchema,

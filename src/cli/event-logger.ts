@@ -3,13 +3,14 @@ import { join, dirname } from 'node:path';
 
 import type { SSEEventType } from '@/lib/types';
 
-/** CORE_SPEC §8 冻结的 11 种事件类型 */
+/** 当前 CLI / SSE 协议允许写入 JSONL 的事件类型 */
 const VALID_EVENT_TYPES: Set<string> = new Set<SSEEventType>([
   'progress',
   'chunk',
   'model_done',
   'model_error',
   'round_done',
+  'round_summary',
   'anonymize',
   'summary',
   'done',
@@ -42,7 +43,7 @@ function validateDiscussionId(id: string): void {
 }
 
 /**
- * 校验事件类型：必须在 CORE_SPEC §8 冻结的 11 种之内
+ * 校验事件类型：必须在当前协议白名单之内
  */
 function validateEventType(type: string): void {
   if (!VALID_EVENT_TYPES.has(type)) {

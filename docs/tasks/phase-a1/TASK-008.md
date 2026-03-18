@@ -56,3 +56,15 @@
 ## 4. Stop Conditions
 
 - 需要新增状态才能完成主流程
+
+---
+
+## 5. Implementation Status
+
+- 状态：`Completed`
+- 完成时间：`2026-03-17`
+- 验证摘要：
+  - `runConsensusDiscussion()` 已成为唯一 3 轮主流程入口
+  - 状态机、CAS 迁移、执行锁、`handleFatalError` 已接通
+  - `agora council run` 已真实进入 discussion create -> session-starter -> orchestrator -> round 1/2/3 -> summary -> done
+  - `tests/unit/orchestrator/consensus.test.ts` 已覆盖 happy path、partial path、insufficient live models path

@@ -1,0 +1,6 @@
+{
+  "owner": "agent-name",
+  "session_hint": "optional-session-id",
+  "acquired_at": "YYYY-MM-DD HH:MM:SS",
+  "intended_action": "append log and update state"
+}
