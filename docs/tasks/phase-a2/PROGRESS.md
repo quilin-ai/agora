@@ -38,7 +38,7 @@ Phase A2 对应 [`技术文档.md`](../../../技术文档.md) 第二十二章的
 
 ## Current Status
 
-- 阶段状态：`In Progress`
+- 阶段状态：`Done`
 - 启动条件：`Phase A1 验收通过`
 - 新增关键议题：`ask / council` 在处理强时效问题时，纯模型闭门回答会出现事实漂移；需要在正式回答前增加“联网背景拉齐（grounding）”步骤
 - 当前判断：`grounding` 应作为 Phase A2 CLI 工程化加固的一部分推进，而不是继续依赖模型静态知识
@@ -60,12 +60,12 @@ Phase A2 对应 [`技术文档.md`](../../../技术文档.md) 第二十二章的
 
 ## Task Progress
 
-- [ ] Task-007
-- [ ] Task-A2-chat
-- [ ] Task-A2-tools
-- [ ] Task-A2-event
-- [ ] Task-A2-test
-- [ ] Task-015-CLI
+- [x] Task-007
+- [x] Task-A2-chat
+- [x] Task-A2-tools
+- [x] Task-A2-event
+- [x] Task-A2-test
+- [x] Task-015-CLI
 
 ## Task Documents
 
