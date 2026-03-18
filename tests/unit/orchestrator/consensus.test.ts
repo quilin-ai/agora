@@ -276,6 +276,61 @@ function createInsufficientModelsClient(): OpenRouterClient {
   };
 }
 
+/**
+ * I01: 1 model TTFT timeout → skipped; 2 others succeed → round continues
+ * The model throws a "TTFT timeout" error to simulate the post-timeout skip path.
+ */
+function createTimeoutOneModelClient(): OpenRouterClient {
+  return {
+    async *streamCompletion(request: CompletionRequest) {
+      if (request.model === 'openai/gpt-4o-mini') {
+        // Simulate TTFT timeout skip (stream-hub converts this to timeout/skipped)
+        throw new Error('TTFT timed out after 15000ms');
+      }
+
+      yield { text: `ok-${request.model}` };
+      return {
+        text: `ok-${request.model}`,
+        usage: { promptTokens: 80, completionTokens: 40 },
+        finishReason: 'stop',
+      } satisfies CompletionResult;
+    },
+    async complete() {
+      return {
+        text: JSON.stringify({
+          consensus: [
+            {
+              content: 'Two models succeeded despite one timeout.',
+              supporting_models: ['openai/gpt-5-nano', 'openai/gpt-4.1-nano'],
+              evidence_refs: ['round-1'],
+            },
+          ],
+          disagreements: [],
+          recommendation: 'Continue with the two remaining models.',
+          confidence: 'medium',
+          open_questions: [],
+          evidence_refs: ['round-1'],
+        }),
+        usage: { promptTokens: 10, completionTokens: 20 },
+        finishReason: 'stop',
+      };
+    },
+  };
+}
+
+/** C06: all 3 models fail → round cannot reach MIN → discussion fails */
+function createAllModelsFailClient(): OpenRouterClient {
+  return {
+    // eslint-disable-next-line require-yield
+    async *streamCompletion() {
+      throw new Error('provider returned error: all down');
+    },
+    async complete() {
+      throw new Error('summary should not execute');
+    },
+  };
+}
+
 describe('runConsensusDiscussion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -517,5 +572,94 @@ describe('runConsensusDiscussion', () => {
       { from: 'created', to: 'streaming' },
       { from: 'streaming', to: 'failed' },
     ]);
+  });
+
+  it('I01 — 1 model TTFT timeout is skipped and discussion continues with 2 remaining models', async () => {
+    const events: SSEEvent[] = [];
+    const { repository, rounds } = createRepository();
+
+    await runConsensusDiscussion({
+      discussionId: 'discussion-1',
+      actor: { userId: 'u1', source: 'test' },
+      onEvent: (event) => {
+        events.push(event);
+      },
+      repository,
+      promptStore: createPromptStore(),
+      client: createTimeoutOneModelClient(),
+      lockAlreadyAcquired: true,
+      stateStore: {
+        async updateStatus() {
+          return true;
+        },
+      },
+      lockStore: {
+        async acquireLock() {
+          return true;
+        },
+        async releaseLock() {
+          return true;
+        },
+      },
+    });
+
+    // round 1 completes despite the timeout on gpt-4o-mini
+    const round1Done = events.find(
+      (e) => e.type === 'round_done' && e.data.round === 1
+    );
+    expect(round1Done).toBeDefined();
+
+    // timeout is reflected in failed_models (action may be 'degraded' or 'skipped')
+    const failedModels =
+      (round1Done?.type === 'round_done' ? round1Done.data.failed_models : undefined) ?? [];
+    const timeoutEntry = failedModels.find(
+      (fm: { logical_model_id: string; error_type: string }) =>
+        fm.logical_model_id === 'openai/gpt-4o-mini' && fm.error_type === 'timeout'
+    );
+    expect(timeoutEntry).toBeDefined();
+
+    // Discussion completes — surviving models ≥ MIN(2)
+    expect(events.some((e) => e.type === 'summary')).toBe(true);
+    expect(events.some((e) => e.type === 'done')).toBe(true);
+
+    // Round saved with a non-null roundNumber
+    expect(rounds[0]).toMatchObject({ roundNumber: 1 });
+  });
+
+  it('C06 — all models fail causes discussion to transition to failed state', async () => {
+    const { repository, rounds } = createRepository();
+    const transitions: Array<{ from: string; to: string }> = [];
+
+    await expect(
+      runConsensusDiscussion({
+        discussionId: 'discussion-1',
+        actor: { userId: 'u1', source: 'test' },
+        onEvent: () => undefined,
+        repository,
+        promptStore: createPromptStore(),
+        client: createAllModelsFailClient(),
+        lockAlreadyAcquired: true,
+        stateStore: {
+          async updateStatus(params) {
+            transitions.push({ from: params.from, to: params.to });
+            return true;
+          },
+        },
+        lockStore: {
+          async acquireLock() {
+            return true;
+          },
+          async releaseLock() {
+            return true;
+          },
+        },
+      })
+    ).rejects.toMatchObject({
+      code: 'INSUFFICIENT_LIVE_MODELS',
+    });
+
+    expect(rounds[0]).toMatchObject({ roundNumber: 1, status: 'failed' });
+    // Transitions end in 'failed' — caller is responsible for triggering billing refund
+    expect(transitions.at(-1)).toEqual({ from: 'streaming', to: 'failed' });
   });
 });

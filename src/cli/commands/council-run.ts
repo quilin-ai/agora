@@ -33,6 +33,9 @@ import {
 import type { ConversationStatus, DiscussionSummaryFinal, SSEEvent } from '@/lib/types';
 import { toDoneEventData, toRestoreEventData } from '@/lib/types';
 
+import { registerCouncilUpgradeCommand } from './council-upgrade';
+import { registerCouncilToolCommands } from './council-tools';
+
 const OBSERVER_POLL_INTERVAL_MS = 1_000;
 const OBSERVER_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -84,6 +87,9 @@ export function registerCouncilCommands(program: Command): void {
         processCouncilRunError(error);
       }
     });
+
+  registerCouncilUpgradeCommand(council);
+  registerCouncilToolCommands(council);
 }
 
 async function handleCouncilRun(options: CouncilRunOptions): Promise<void> {

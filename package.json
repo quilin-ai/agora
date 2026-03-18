@@ -17,6 +17,7 @@
     "start": "next start",
     "db:check": "tsx scripts/check-db-connection.ts",
     "seed": "tsx scripts/seed-phase-a1.ts",
+    "logo:preview": "tsx scripts/preview-logo.ts",
     "phase-a1:smoke:paid": "bash scripts/run-phase-a1-paid-smoke.sh",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",

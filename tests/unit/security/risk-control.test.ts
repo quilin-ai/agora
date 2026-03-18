@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BUDGET_MODELS,
   PLAN_LIMITS,
   RiskControlError,
   assertPlanDailyLimit,
@@ -10,6 +11,7 @@ import {
   findRecentTopicHashMatch,
   normalizeTopic,
   shouldEnforceTopicDedup,
+  validatePlanModelAccess,
   validateTopicInput,
 } from '@/lib/security/risk-control';
 
@@ -118,5 +120,102 @@ describe('risk-control', () => {
     expect(safe.riskLevel).toBe('normal');
     expect(safe.topicHash).toHaveLength(64);
     expect(risky).toBe('high_risk');
+  });
+});
+
+// ─── I09 / I10 — plan model access ───────────────────────────────────────────
+
+describe('I09 validatePlanModelAccess — free user forbidden model', () => {
+  it('throws MODEL_NOT_ALLOWED when free user requests a frontier model', () => {
+    expect(() =>
+      validatePlanModelAccess({
+        plan: 'free',
+        models: ['openai/gpt-5.2'],  // frontier model, not in budget list
+      })
+    ).toThrow(RiskControlError);
+
+    try {
+      validatePlanModelAccess({
+        plan: 'free',
+        models: ['anthropic/claude-sonnet-4.6'],
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(RiskControlError);
+      expect((error as RiskControlError).code).toBe('MODEL_NOT_ALLOWED');
+    }
+  });
+
+  it('allows free user to use budget models', () => {
+    expect(() =>
+      validatePlanModelAccess({
+        plan: 'free',
+        models: [BUDGET_MODELS[0]],
+      })
+    ).not.toThrow();
+  });
+
+  it('allows free user to use :free suffix models', () => {
+    expect(() =>
+      validatePlanModelAccess({
+        plan: 'free',
+        models: ['openai/gpt-oss-120b:free', 'meta-llama/llama-3.3-70b-instruct:free'],
+      })
+    ).not.toThrow();
+  });
+
+  it('pro/higher plan allows frontier models', () => {
+    expect(() =>
+      validatePlanModelAccess({
+        plan: 'pro',
+        models: ['anthropic/claude-sonnet-4.6', 'openai/gpt-5.2'],
+      })
+    ).not.toThrow();
+  });
+});
+
+describe('I10 validatePlanModelAccess — free user exceeds model limit', () => {
+  it('throws MAX_MODELS_EXCEEDED when free user requests 4 models', () => {
+    try {
+      validatePlanModelAccess({
+        plan: 'free',
+        models: ['a:free', 'b:free', 'c:free', 'd:free'],  // 4 models, free limit is 3
+      });
+      throw new Error('Expected RiskControlError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(RiskControlError);
+      expect((error as RiskControlError).code).toBe('MAX_MODELS_EXCEEDED');
+      expect((error as RiskControlError).message).toContain('3');
+    }
+  });
+
+  it('allows free user to use exactly 3 models', () => {
+    expect(() =>
+      validatePlanModelAccess({
+        plan: 'free',
+        models: ['a:free', 'b:free', 'c:free'],
+      })
+    ).not.toThrow();
+  });
+
+  it('pro plan allows 5 models', () => {
+    expect(() =>
+      validatePlanModelAccess({
+        plan: 'pro',
+        models: ['m1', 'm2', 'm3', 'm4', 'm5'],
+      })
+    ).not.toThrow();
+  });
+
+  it('pro plan throws when 6 models (limit is 5)', () => {
+    try {
+      validatePlanModelAccess({
+        plan: 'pro',
+        models: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'],
+      });
+      throw new Error('Expected RiskControlError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(RiskControlError);
+      expect((error as RiskControlError).code).toBe('MAX_MODELS_EXCEEDED');
+    }
   });
 });

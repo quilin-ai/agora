@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { fileURLToPath } from 'node:url';
 
 import { registerAskCommand } from '@/cli/commands/ask';
+import { registerChatCommand } from '@/cli/commands/chat';
 import { registerCouncilCommands } from '@/cli/commands/council-run';
 
 export function createProgram(): Command {
@@ -15,6 +16,7 @@ export function createProgram(): Command {
     .version('0.1.0');
 
   registerAskCommand(program);
+  registerChatCommand(program);
   registerCouncilCommands(program);
 
   return program;

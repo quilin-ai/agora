@@ -15,6 +15,14 @@ export const PLAN_LIMITS = {
   ultra: { chatPerDay: -1, councilPerDay: -1, maxModels: 10, tier: 'all' },
 } as const;
 
+export const BUDGET_MODELS = [
+  'openai/gpt-5-mini',
+  'google/gemini-3-flash',
+  'deepseek/deepseek-chat',
+  'x-ai/grok-4.1',
+  'anthropic/claude-haiku-4.5',
+] as const;
+
 export const INPUT_LIMITS = {
   chatCharacters: 16_000,
   councilCharacters: 8_000,
@@ -166,6 +174,41 @@ export function assertPlanDailyLimit(params: {
       'RATE_LIMITED',
       `${params.plan} plan has reached the daily ${params.mode} limit`
     );
+  }
+}
+
+/**
+ * I09 / I10 — 验证用户 plan 对模型的访问权限
+ * - MODEL_NOT_ALLOWED: free tier 用户使用了非 budget 模型
+ * - MAX_MODELS_EXCEEDED: 请求模型数超出 plan 上限
+ */
+export function validatePlanModelAccess(params: {
+  plan: UserPlan;
+  models: string[];
+  budgetModels?: readonly string[];
+}): void {
+  const planLimits = PLAN_LIMITS[params.plan];
+  const allowedBudgetModels = params.budgetModels ?? BUDGET_MODELS;
+
+  if (params.models.length > planLimits.maxModels) {
+    throw new RiskControlError(
+      'MAX_MODELS_EXCEEDED',
+      `${params.plan} plan allows at most ${planLimits.maxModels} council models, got ${params.models.length}`
+    );
+  }
+
+  if (planLimits.tier === 'budget') {
+    for (const model of params.models) {
+      const isBudgetModel =
+        allowedBudgetModels.includes(model as (typeof BUDGET_MODELS)[number]) ||
+        model.endsWith(':free');
+      if (!isBudgetModel) {
+        throw new RiskControlError(
+          'MODEL_NOT_ALLOWED',
+          `${params.plan} plan does not allow frontier model: ${model}`
+        );
+      }
+    }
   }
 }
 

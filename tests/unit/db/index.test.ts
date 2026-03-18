@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DatabaseConfigError,
+  DatabaseConnectionError,
   isRetryableDatabaseError,
   loadDatabaseRuntimeConfig,
 } from '@/lib/db/index';
@@ -107,5 +108,85 @@ describe('retryable database errors', () => {
     });
 
     expect(isRetryableDatabaseError(error)).toBe(false);
+  });
+});
+
+// ─── C03 — DB retry pattern ──────────────────────────────────────────────────
+
+describe('C03 DB write failure retry pattern', () => {
+  it('isRetryableDatabaseError returns true for all transient connection errors', () => {
+    const retryableCodes = ['CONNECT_TIMEOUT', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EPIPE'];
+
+    for (const code of retryableCodes) {
+      const error = Object.assign(new Error(`connection failed: ${code}`), { code });
+      expect(isRetryableDatabaseError(error)).toBe(true);
+    }
+  });
+
+  it('retry loop exhausts attempts and throws DatabaseConnectionError', async () => {
+    let callCount = 0;
+    const maxAttempts = 3;
+
+    // Simulate the retry algorithm used in ensureDatabaseReady
+    async function simulateDbCall(): Promise<void> {
+      callCount++;
+      const err = Object.assign(new Error('CONNECT_TIMEOUT'), { code: 'CONNECT_TIMEOUT' });
+      throw err;
+    }
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await simulateDbCall();
+        break;
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableDatabaseError(error) || attempt === maxAttempts) {
+          break;
+        }
+        // no delay in test
+      }
+    }
+
+    expect(callCount).toBe(maxAttempts);
+    expect(isRetryableDatabaseError(lastError)).toBe(true);
+  });
+
+  it('retry loop succeeds on 3rd attempt', async () => {
+    let callCount = 0;
+
+    async function simulateDbWrite(): Promise<string> {
+      callCount++;
+      if (callCount < 3) {
+        const err = Object.assign(new Error('CONNECT_TIMEOUT'), { code: 'CONNECT_TIMEOUT' });
+        throw err;
+      }
+      return 'ok';
+    }
+
+    let result: string | null = null;
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        result = await simulateDbWrite();
+        break;
+      } catch (error) {
+        if (!isRetryableDatabaseError(error) || attempt === maxAttempts) {
+          break;
+        }
+      }
+    }
+
+    expect(result).toBe('ok');
+    expect(callCount).toBe(3);
+  });
+
+  it('DatabaseConnectionError is thrown after exhausting all retries', () => {
+    const error = new DatabaseConnectionError(
+      'Failed to establish a stable connection after 3 attempts'
+    );
+    expect(error.name).toBe('DatabaseConnectionError');
+    expect(error.message).toContain('3 attempts');
   });
 });

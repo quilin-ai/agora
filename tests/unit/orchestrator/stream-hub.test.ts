@@ -377,4 +377,98 @@ describe('stream-hub', () => {
       },
     ]);
   });
+
+  it('C01 — rate_limited (429) error triggers retry then skip when no fallback', async () => {
+    const events: SSEEvent[] = [];
+    const hub = createStreamHub((event) => {
+      events.push(event);
+    });
+    const attempts = new Map<string, number>();
+    const client: OpenRouterClient = {
+      // eslint-disable-next-line require-yield
+      async *streamCompletion(request: CompletionRequest) {
+        const count = (attempts.get(request.model) ?? 0) + 1;
+        attempts.set(request.model, count);
+        throw new Error('upstream returned 429: rate limit exceeded');
+      },
+      async complete() {
+        throw new Error('not implemented');
+      },
+    };
+
+    const result = await streamWithRetry({
+      discussionId: 'd1',
+      logicalModelId: 'rate-limited-model',
+      round: 1,
+      prompt: 'Topic: test',
+      client,
+      hub,
+      fallbackModelIds: [],
+    });
+
+    expect(result.response).toBeNull();
+    expect(result.failures).toHaveLength(2);
+    expect(result.failures[0]).toMatchObject({ error_type: 'rate_limited', action: 'retrying' });
+    expect(result.failures[1]).toMatchObject({ error_type: 'rate_limited', action: 'skipped' });
+
+    const modelErrors = events.filter((e) => e.type === 'model_error');
+    expect(modelErrors[0]).toMatchObject({
+      type: 'model_error',
+      data: expect.objectContaining({
+        error_type: 'rate_limited',
+        action: 'retrying',
+      }),
+    });
+    expect(modelErrors[1]).toMatchObject({
+      type: 'model_error',
+      data: expect.objectContaining({
+        error_type: 'rate_limited',
+        action: 'skipped',
+      }),
+    });
+  });
+
+  it('C02 — missing upstream usage defaults to zero tokens without crashing', async () => {
+    const events: SSEEvent[] = [];
+    const hub = createStreamHub((event) => {
+      events.push(event);
+    });
+    const client: OpenRouterClient = {
+      async *streamCompletion() {
+        yield { text: 'answer with no usage metadata' };
+        return {
+          text: 'answer with no usage metadata',
+          // usage is 0/0 because upstream did not provide it (client defaults to 0)
+          usage: { promptTokens: 0, completionTokens: 0 },
+          finishReason: 'stop',
+        } satisfies CompletionResult;
+      },
+      async complete() {
+        throw new Error('not implemented');
+      },
+    };
+
+    const result = await streamWithRetry({
+      discussionId: 'd1',
+      logicalModelId: 'no-usage-model',
+      round: 1,
+      prompt: 'Topic: test',
+      client,
+      hub,
+      fallbackModelIds: [],
+    });
+
+    expect(result.response).not.toBeNull();
+    expect(result.response?.inputTokens).toBe(0);
+    expect(result.response?.outputTokens).toBe(0);
+    expect(result.response?.rawCost).toBe(0);
+
+    const modelDone = events.find((e) => e.type === 'model_done');
+    expect(modelDone).toMatchObject({
+      type: 'model_done',
+      data: expect.objectContaining({
+        tokens: { input: 0, output: 0 },
+      }),
+    });
+  });
 });
