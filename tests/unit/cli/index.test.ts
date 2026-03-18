@@ -10,11 +10,13 @@ describe('CLI skeleton', () => {
     expect(program.description()).toContain('CLI-first');
   });
 
-  it('registers ask and council command groups', () => {
+  it('registers primary command entrypoints and council tools', () => {
     const program = createProgram();
     const commandNames = program.commands.map((command) => command.name());
 
     expect(commandNames).toContain('ask');
+    expect(commandNames).toContain('chat');
+    expect(commandNames).toContain('t');
     expect(commandNames).toContain('council');
   });
 

@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 
-import type { SSEEvent, DiscussionSummaryFinal } from '@/lib/types';
-
-const POLLING_INTERVAL_MS = 3000;
-const POLLING_MAX_MS = 180_000;
+import type { SSEEvent } from '@/lib/types';
+import { POLLING_INTERVAL_MS, POLLING_MAX_MS, handlePollResult } from './polling-utils';
+import type { PollDiscussionResponse } from './polling-utils';
 
 interface UseDiscussionSSEOptions {
   discussionId: string | null;
@@ -41,22 +40,10 @@ export function useDiscussionSSE({ discussionId, onEvent, onRestoreComplete, ena
       try {
         const res = await fetch(`/api/discussions/${id}`);
         if (!res.ok) return;
-        const data = await res.json() as { discussion: { status: string; summary: DiscussionSummaryFinal | null; total_platform_price: number; total_raw_cost: number } };
-        const { status, summary } = data.discussion;
-
-        if (status === 'completed' || status === 'failed' || status === 'aborted') {
+        const data = await res.json() as PollDiscussionResponse;
+        const result = handlePollResult(data, onEvent);
+        if (result === 'done') {
           stopPolling();
-          if (summary) {
-            onEvent({ type: 'summary', data: { ...summary, seq: 0 } });
-          }
-          onEvent({
-            type: 'done',
-            data: {
-              total_raw_cost: data.discussion.total_raw_cost ?? 0,
-              total_platform_price: data.discussion.total_platform_price ?? 0,
-              seq: 0,
-            },
-          });
         }
       } catch {
         // ignore
