@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+
 export default function Home() {
-  return <main><h1>Agora</h1></main>;
+  redirect('/chat');
 }
