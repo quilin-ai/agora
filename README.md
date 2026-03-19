@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/pnpm-10.32.1-F69220?logo=pnpm&logoColor=white" alt="pnpm 10.32.1" />
   <img src="https://img.shields.io/badge/runtime-CLI--first-0f766e" alt="CLI first" />
   <img src="https://img.shields.io/badge/status-Phase_A2_in_progress-2563eb" alt="Phase A2 in progress" />
-  <img src="https://img.shields.io/badge/release_model-open_core-7c3aed" alt="Open core" />
+  <img src="https://img.shields.io/badge/license-source--available_noncommercial-7c3aed" alt="Source-available noncommercial" />
 </p>
 
 <p align="center">
@@ -19,14 +19,14 @@ A CLI-first discussion engine for multi-model collaborative reasoning.
 Agora 不把“问一个模型拿一个答案”当作默认交互，而是让多个模型围绕同一议题进行三轮讨论、匿名互评，并由书记员模型输出结构化总结。  
 Agora does not treat "ask one model, get one answer" as the default interaction; it runs a three-round council with anonymous peer review and a structured secretary summary.
 
-长期规划中，核心引擎、CLI 和 TUI 会开源；产品化 Web UI 会保持闭源。  
-In the long-term plan, the core engine, CLI, and TUI will be open source, while the product Web UI will remain closed source.
+长期规划中，核心引擎、CLI 和 TUI 会以源码可见、禁止商用、修改版需公开源码的方式发布；产品化 Web UI 会保持闭源。  
+In the long-term plan, the core engine, CLI, and TUI will be released as source-available, noncommercial, and reciprocal software, while the product Web UI will remain closed source.
 
 ## 目录 / Table Of Contents
 
 - [项目简介 / Overview](#项目简介--overview)
 - [为什么是 Agora / Why Agora](#为什么是-agora--why-agora)
-- [当前开源边界 / Open Source Boundary](#当前开源边界--open-source-boundary)
+- [当前许可边界 / Licensing Boundary](#当前许可边界--licensing-boundary)
 - [先试这 3 条 / Start With These 3](#先试这-3-条--start-with-these-3)
 - [核心特性 / Key Features](#核心特性--key-features)
 - [架构概览 / Architecture](#架构概览--architecture)
@@ -35,6 +35,7 @@ In the long-term plan, the core engine, CLI, and TUI will be open source, while 
 - [快速开始 / Quick Start](#快速开始--quick-start)
 - [CLI 入口 / CLI Entrypoints](#cli-入口--cli-entrypoints)
 - [命令说明 / Commands](#命令说明--commands)
+- [许可说明 / Licensing](#许可说明--licensing)
 - [常见问题 / FAQ](#常见问题--faq)
 - [路线图 / Roadmap](#路线图--roadmap)
 - [项目状态 / Project Status](#项目状态--project-status)
@@ -125,16 +126,16 @@ The standard council flow is:
 这样得到的结果更容易审查，更容易回放，也更适合作为真实产品交互的基础能力。  
 The result is easier to inspect, easier to replay, and better suited as a foundation for real product interactions.
 
-## 当前开源边界 / Open Source Boundary
+## 当前许可边界 / Licensing Boundary
 
-当前规划中的开源部分包括核心引擎、CLI 和未来的 TUI。  
-The planned open-source surface includes the core engine, the CLI, and the future TUI.
+当前规划中，核心引擎、CLI 和未来的 TUI 以源码可见方式发布，但不允许商用，并要求修改版在对外分发或对外提供服务时继续公开对应源码。  
+The core engine, CLI, and future TUI are planned to be released as source-available software: commercial use is prohibited, and modified versions must continue to publish corresponding source code when distributed or offered to external users.
 
 当前规划中的闭源部分是产品化 Web UI 以及围绕它构建的私有产品层。  
 The planned closed-source surface is the product Web UI and the private product layer built around it.
 
-这个边界是有意设计的：核心推理与讨论编排应该可复用、可检查、可被本地工具消费；而产品化 Web 呈现不必绑定同样的发布策略。  
-This boundary is intentional: the reasoning core and discussion orchestration should be reusable, inspectable, and consumable by local tools, while the product Web presentation does not need to follow the same release policy.
+这个边界是有意设计的：核心推理与讨论编排应该可检查、可学习、可修改，但不应被直接闭源商用；而产品化 Web 呈现不必绑定同样的发布策略。  
+This boundary is intentional: the reasoning core and orchestration should be inspectable, learnable, and modifiable, but not directly turned into closed commercial products; the product Web presentation does not need to follow the same release policy.
 
 ## 核心特性 / Key Features
 
@@ -432,6 +433,35 @@ The long-form commands are still supported, but they are no longer the primary s
 - `agora chat ...` → `agora c ...`  
   `agora chat ...` → `agora c ...`
 
+## 许可说明 / Licensing
+
+本仓库采用自定义的 [Agora Community License 1.0](./LICENSE)。  
+This repository is licensed under the custom [Agora Community License 1.0](./LICENSE).
+
+它不是 OSI 定义下的开源许可证。  
+It is not an OSI-approved open-source license.
+
+这个许可证的核心规则是：  
+The core rules of the license are:
+
+- 可以查看源码。  
+  You may view the source code.
+- 可以在非商用前提下修改源码。  
+  You may modify the source code for noncommercial purposes.
+- 可以在非商用前提下分发原版或修改版。  
+  You may redistribute the original or modified versions for noncommercial purposes.
+- 不得将本项目或衍生版本用于商业用途。  
+  You may not use the project or derivative works for commercial purposes.
+- 修改版如果对外分发，必须提供对应源码。  
+  If you distribute a modified version, you must provide the corresponding source code.
+- 修改版如果以服务形式对外提供给用户，也必须向这些用户提供对应源码。  
+  If you provide a modified version as a service to external users, you must also provide corresponding source code to those users.
+- 不得把原项目或修改版变成闭源发布。  
+  You may not turn the original project or a derivative work into a closed-source release.
+
+更易读的解释见 [LICENSING.md](./LICENSING.md)。  
+See [LICENSING.md](./LICENSING.md) for a plain-language explanation.
+
 ## 命令说明 / Commands
 
 ### `agora t`
@@ -589,8 +619,8 @@ Stabilizing the CLI first makes it much easier to iterate on prompts, fault tole
 
 ### TUI 和 Web UI 的关系是什么？ / What is the relationship between the TUI and the Web UI?
 
-TUI 会和 CLI 一样复用同一套 core 层，并计划开源。  
-The TUI will reuse the same core layer as the CLI and is planned to be open source.
+TUI 会和 CLI 一样复用同一套 core 层，并计划按相同的源码可见非商用互惠许可发布。  
+The TUI will reuse the same core layer as the CLI and is planned to ship under the same source-available, noncommercial, reciprocal license.
 
 Web UI 会继续复用 core 层，但产品化实现保持闭源。  
 The Web UI will also reuse the core layer, but the productized implementation will remain closed source.
@@ -603,21 +633,21 @@ There is already a grounding configuration and implementation entrypoint for inj
 当前默认 provider 是 `duckduckgo`，后续能力仍会继续加固。  
 The current default provider is `duckduckgo`, and the grounding layer will continue to be hardened.
 
-### 这个仓库已经定好最终开源许可证了吗？ / Is the final open-source license already decided?
+### 这个仓库的许可证是什么？ / What license does this repository use?
 
-截至当前仓库状态，还没有看到最终公开的许可证文件。  
-As of the current repository state, there is no finalized public license file yet.
+本仓库使用自定义的 [Agora Community License 1.0](./LICENSE)。  
+This repository uses the custom [Agora Community License 1.0](./LICENSE).
 
-如果你准备正式公开仓库，建议在发布前补齐许可证与发布说明。  
-If you plan to publish the repository publicly, you should add the license and release notes before launch.
+它允许查看、修改和非商用分发源码，但禁止商业使用，并要求修改版在对外分发或对外提供服务时继续公开对应源码。  
+It allows viewing, modifying, and noncommercial redistribution of the source code, but prohibits commercial use and requires modified versions to continue publishing corresponding source code when distributed or offered as a service.
 
 ## 路线图 / Roadmap
 
 | 阶段 / Phase | 状态 / Status | 目标 / Goals | 公开边界 / Release Boundary |
 | --- | --- | --- | --- |
-| Phase A1 | 已完成。<br>Completed. | 最小引擎闭环：`a`、`t`、3 轮讨论、匿名化、书记员总结、JSONL。<br>Minimum engine loop: `a`, `t`, three rounds, anonymization, secretary summary, and JSONL logs. | 开源。<br>Open. |
-| Phase A2 | 进行中。<br>In progress. | 计费、完整 CLI、事件契约一致性、测试矩阵、grounding 工程化。<br>Billing, full CLI, event-contract alignment, test matrix, and grounding hardening. | 开源。<br>Open. |
-| Phase B | 未开始。<br>Not started. | Web 最小壳接入，同一套 core 驱动 Web renderer。<br>Minimal Web shell on top of the same core renderer boundary. | Core 开源，Web 产品层私有。<br>Core open, product Web layer private. |
+| Phase A1 | 已完成。<br>Completed. | 最小引擎闭环：`a`、`t`、3 轮讨论、匿名化、书记员总结、JSONL。<br>Minimum engine loop: `a`, `t`, three rounds, anonymization, secretary summary, and JSONL logs. | 源码可见、禁止商用、修改版需公开源码。<br>Source-available, noncommercial, reciprocal. |
+| Phase A2 | 进行中。<br>In progress. | 计费、完整 CLI、事件契约一致性、测试矩阵、grounding 工程化。<br>Billing, full CLI, event-contract alignment, test matrix, and grounding hardening. | 源码可见、禁止商用、修改版需公开源码。<br>Source-available, noncommercial, reciprocal. |
+| Phase B | 未开始。<br>Not started. | Web 最小壳接入，同一套 core 驱动 Web renderer。<br>Minimal Web shell on top of the same core renderer boundary. | Core 源码可见，Web 产品层私有。<br>Core source-available, product Web layer private. |
 | Phase C | 未开始。<br>Not started. | 产品化完善、页面、后台、国际化、分享、监控与部署验收。<br>Productization work including pages, back office, i18n, sharing, monitoring, and deployment acceptance. | 混合模式。<br>Mixed boundary. |
 
 ## 项目状态 / Project Status

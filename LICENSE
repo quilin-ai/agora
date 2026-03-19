@@ -1,0 +1,125 @@
+Agora Community License 1.0
+
+Copyright (c) 2026 Rayson Meng and contributors
+
+This license governs use of the Agora repository and its contents, including
+source code, scripts, prompts, assets, documentation, and derivative works.
+
+By exercising any right under this license, you agree to all of its terms.
+
+1. Definitions
+
+"Software" means this repository and any material licensed under this license.
+
+"You" means any person or entity exercising rights under this license.
+
+"Derivative Work" means any work based on, incorporating, modifying, adapting,
+translating, or redistributing any substantial portion of the Software.
+
+"Source Code" means the preferred form of a work for making modifications,
+including build scripts, configuration, interface definitions, prompts, and any
+other material reasonably required to run, modify, and redistribute that work.
+
+"Commercial Use" means any use primarily intended for or directed toward
+commercial advantage or monetary compensation, including:
+
+- selling or licensing the Software or a Derivative Work;
+- offering paid hosting, managed service, API access, support, consulting, or
+  training materially based on the Software;
+- using the Software or a Derivative Work as part of a paid product, internal
+  commercial system, or revenue-generating service;
+- using the Software or a Derivative Work inside an organization in connection
+  with commercial operations, except solely for internal evaluation.
+
+"Noncommercial Use" means any use that is not Commercial Use.
+
+"External User" means any person other than you who receives a copy of the
+Software or interacts with a network service materially based on the Software
+or a Derivative Work.
+
+2. License Grant
+
+Subject to the terms of this license, you are granted a worldwide,
+non-exclusive, non-transferable, revocable copyright license to:
+
+- use, copy, and modify the Software for Noncommercial Use;
+- create and use Derivative Works for Noncommercial Use;
+- distribute the Software or Derivative Works for Noncommercial Use.
+
+No trademark rights, patent rights, or other rights are granted except as
+strictly necessary to exercise the copyright license above.
+
+3. Noncommercial Restriction
+
+You may not make any Commercial Use of the Software or any Derivative Work
+without prior written permission from the copyright holder.
+
+If you need Commercial Use rights, you must obtain a separate commercial
+license from the copyright holder.
+
+4. Copyleft and Source Availability
+
+If you distribute the Software or any Derivative Work to any External User, you
+must:
+
+- provide the complete corresponding Source Code at no charge beyond reasonable
+  distribution cost;
+- license the entire distributed work under this same license;
+- preserve all copyright, attribution, and license notices;
+- clearly state that you changed the Software, if you made changes.
+
+If you make the Software or any Derivative Work available to External Users as
+a network service, hosted service, API, website, or similar remote access
+offering, you must:
+
+- make the complete corresponding Source Code available to those External Users;
+- provide a clear and reasonably prominent notice describing where the Source
+  Code can be obtained;
+- license the service implementation, to the extent it is a Derivative Work,
+  under this same license.
+
+You may not relicense the Software or a Derivative Work under a more
+restrictive, more permissive, or closed-source license.
+
+5. Internal Evaluation
+
+You may privately review, test, study, and evaluate the Software within an
+organization without publishing your modifications, provided that:
+
+- the use is strictly Noncommercial Use; and
+- no External User receives the Software or interacts with a service based on
+  the modified Software.
+
+6. No Closed Redistribution
+
+You may not distribute the Software or any Derivative Work in object-only,
+binary-only, obfuscated, encrypted, or otherwise non-source-available form
+unless complete corresponding Source Code is made available under this same
+license at the same time.
+
+7. Termination
+
+Any violation of this license automatically terminates your rights under it.
+
+If you cure the violation within 30 days after becoming aware of it, your
+rights are reinstated unless the copyright holder has already separately
+terminated them in writing for repeated or serious violations.
+
+8. Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+9. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT WILL ANY COPYRIGHT HOLDER
+OR CONTRIBUTOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN
+AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OF OR OTHER DEALINGS IN THE SOFTWARE.
+
+10. Governing Interpretation
+
+If any provision of this license is unenforceable, that provision shall be
+interpreted to the minimum extent necessary to make it enforceable, and the
+remaining provisions will remain in effect.
