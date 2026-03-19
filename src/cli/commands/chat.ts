@@ -1,5 +1,5 @@
 /**
- * agora chat — 会话化单模型多轮对话
+ * agora c / agora chat — 会话化单模型多轮对话
  *
  * 支持指令：
  * - /switch <model>  切换模型，保留上下文
@@ -38,20 +38,49 @@ interface ChatMessage {
 
 export function registerChatCommand(program: Command): void {
   program
-    .command('chat')
-    .description('Start a multi-turn chat conversation with a single model')
+    .command('chat [prompt...]')
+    .alias('c')
+    .description('Start or resume chat')
     .option('-m, --model <model>', 'Model ID to use')
     .option('-c, --conversation-id <conversationId>', 'Resume an existing chat conversation')
-    .action(async (options: { model?: string; conversationId?: string }) => {
+    .addHelpText(
+      'after',
+      `
+Examples:
+  agora c
+  agora c "Help me stress-test a product plan before I commit to it."
+  agora c -m openai/gpt-oss-120b:free
+  agora c -c <conversation-id>
+  agora c -c <conversation-id> "Continue from the strongest objection."
+
+Compatibility:
+  agora chat
+  agora chat "Help me stress-test a product plan before I commit to it."
+  agora chat -m openai/gpt-oss-120b:free
+
+Interactive commands:
+  /switch <model-id>   switch models without losing context
+  /upgrade             upgrade the current chat into a council discussion
+  /exit                leave the chat session
+`
+    )
+    .action(async (promptParts: string[], options: { model?: string; conversationId?: string }) => {
       try {
-        await handleChat(options);
+        await handleChat({
+          ...options,
+          initialPrompt: resolveInitialChatPrompt(promptParts),
+        });
       } catch (error) {
         processChatError(error);
       }
     });
 }
 
-async function handleChat(options: { model?: string; conversationId?: string }): Promise<void> {
+async function handleChat(options: {
+  model?: string;
+  conversationId?: string;
+  initialPrompt?: string | null;
+}): Promise<void> {
   const startupIndicator = createCliStatusIndicator();
 
   try {
@@ -84,6 +113,32 @@ async function handleChat(options: { model?: string; conversationId?: string }):
   console.log('[chat] Commands: /switch <model> | /upgrade | /exit');
   console.log('[chat] ---');
 
+  if (options.initialPrompt) {
+    console.log(`[chat] You: ${options.initialPrompt}`);
+    const shouldContinue = await processChatInput({
+      input: options.initialPrompt,
+      currentModel,
+      history,
+      conversationId,
+      client,
+      onModelChange: (nextModel) => {
+        currentModel = nextModel;
+      },
+      onConversationIdChange: (nextConversationId) => {
+        conversationId = nextConversationId;
+      },
+      onUpgrade: async (nextConversationId) => {
+        console.log(`[chat] Upgrading conversation ${nextConversationId} to council...`);
+        await handleChatUpgrade({ conversationId: nextConversationId, config });
+      },
+    });
+
+    if (!shouldContinue) {
+      await shutdownDbClient();
+      return;
+    }
+  }
+
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -95,135 +150,176 @@ async function handleChat(options: { model?: string; conversationId?: string }):
       const input = rawInput.trim();
 
       if (!input) continue;
+      const shouldContinue = await processChatInput({
+        input,
+        currentModel,
+        history,
+        conversationId,
+        client,
+        onModelChange: (nextModel) => {
+          currentModel = nextModel;
+        },
+        onConversationIdChange: (nextConversationId) => {
+          conversationId = nextConversationId;
+        },
+        onUpgrade: async (nextConversationId) => {
+          readline.close();
+          console.log(`[chat] Upgrading conversation ${nextConversationId} to council...`);
+          await handleChatUpgrade({ conversationId: nextConversationId, config });
+        },
+      });
 
-      // /exit
-      if (input === '/exit') {
-        console.log('[chat] Goodbye.');
-        break;
-      }
-
-      // /switch <model>
-      if (input.startsWith('/switch ')) {
-        const newModel = input.slice('/switch '.length).trim();
-        if (!newModel) {
-          console.log('[chat] Usage: /switch <model-id>');
-          continue;
-        }
-        currentModel = newModel;
-        console.log(`[chat] Switched to model: ${currentModel}`);
-        continue;
-      }
-
-      // /upgrade
-      if (input === '/upgrade') {
-        if (!conversationId) {
-          if (history.length === 0) {
-            console.log('[chat] No messages to upgrade. Start chatting first.');
-            continue;
-          }
-          // Flush messages to DB first
-          conversationId = await flushChatToDb({ currentModel, history });
-          console.log(`[chat] Saved conversation ${conversationId}`);
-        }
-
-        readline.close();
-        console.log(`[chat] Upgrading conversation ${conversationId} to council...`);
-        await handleChatUpgrade({ conversationId, config });
+      if (!shouldContinue) {
         return;
-      }
-
-      // Risk check
-      try {
-        validateTopicInput({ topic: input, mode: 'chat' });
-      } catch (err) {
-        if (err instanceof RiskControlError) {
-          console.log(`[chat] Input rejected (${err.code}): ${err.message}`);
-          continue;
-        }
-        throw err;
-      }
-
-      // Ensure conversation exists in DB
-      if (!conversationId && history.length === 0) {
-        conversationId = await createChatConversation(currentModel);
-        console.log(`[chat] Conversation ID: ${conversationId}`);
-      }
-
-      // Add user message
-      history.push({ role: 'user', content: input });
-      if (conversationId) {
-        await persistMessage(conversationId, { role: 'user', content: input, modelId: null });
-      }
-
-      // Stream response
-      const responseIndicator = createCliStatusIndicator();
-      let responseText = '';
-      let started = false;
-
-      responseIndicator.start(`[chat] ${currentModel} thinking...`);
-
-      try {
-        const stream = client.streamCompletion({
-          model: currentModel,
-          messages: history.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          })),
-        });
-
-        while (true) {
-          const next = await stream.next();
-
-          if (next.done) {
-            if (responseIndicator.isActive()) {
-              responseIndicator.succeed(`[chat] ${currentModel} done`);
-            }
-
-            process.stdout.write('\n');
-            console.log(
-              `[chat] Tokens: input=${next.value.usage.promptTokens} output=${next.value.usage.completionTokens}`
-            );
-
-            // Persist assistant message
-            history.push({ role: 'assistant', content: responseText });
-            if (conversationId) {
-              await persistMessage(conversationId, {
-                role: 'assistant',
-                content: responseText,
-                modelId: currentModel,
-              });
-            }
-            break;
-          }
-
-          if (!next.value.text) continue;
-
-          if (!started) {
-            responseIndicator.succeed(`[chat] ${currentModel}:`);
-            started = true;
-          }
-
-          process.stdout.write(next.value.text);
-          responseText += next.value.text;
-        }
-      } catch (error) {
-        if (responseIndicator.isActive()) {
-          responseIndicator.fail(`[chat] ${currentModel} failed`);
-        }
-
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[chat] Error: ${message}`);
-        // Remove the user message from history since we got no valid response
-        history.pop();
-        if (conversationId) {
-          await deleteLastUserMessage(conversationId);
-        }
       }
     }
   } finally {
     readline.close();
     await shutdownDbClient();
   }
+}
+
+async function processChatInput(params: {
+  input: string;
+  currentModel: string;
+  history: ChatMessage[];
+  conversationId: string | null;
+  client: ReturnType<typeof createOpenRouterClient>;
+  onModelChange: (model: string) => void;
+  onConversationIdChange: (conversationId: string) => void;
+  onUpgrade: (conversationId: string) => Promise<void>;
+}): Promise<boolean> {
+  if (params.input === '/exit') {
+    console.log('[chat] Goodbye.');
+    return false;
+  }
+
+  if (params.input.startsWith('/switch ')) {
+    const newModel = params.input.slice('/switch '.length).trim();
+    if (!newModel) {
+      console.log('[chat] Usage: /switch <model-id>');
+      return true;
+    }
+    params.onModelChange(newModel);
+    console.log(`[chat] Switched to model: ${newModel}`);
+    return true;
+  }
+
+  if (params.input === '/upgrade') {
+    let nextConversationId = params.conversationId;
+
+    if (!nextConversationId) {
+      if (params.history.length === 0) {
+        console.log('[chat] No messages to upgrade. Start chatting first.');
+        return true;
+      }
+
+      nextConversationId = await flushChatToDb({
+        currentModel: params.currentModel,
+        history: params.history,
+      });
+      params.onConversationIdChange(nextConversationId);
+      console.log(`[chat] Saved conversation ${nextConversationId}`);
+    }
+
+    await params.onUpgrade(nextConversationId);
+    return false;
+  }
+
+  try {
+    validateTopicInput({ topic: params.input, mode: 'chat' });
+  } catch (err) {
+    if (err instanceof RiskControlError) {
+      console.log(`[chat] Input rejected (${err.code}): ${err.message}`);
+      return true;
+    }
+    throw err;
+  }
+
+  let nextConversationId = params.conversationId;
+  if (!nextConversationId && params.history.length === 0) {
+    nextConversationId = await createChatConversation(params.currentModel);
+    params.onConversationIdChange(nextConversationId);
+    console.log(`[chat] Conversation ID: ${nextConversationId}`);
+  }
+
+  params.history.push({ role: 'user', content: params.input });
+  if (nextConversationId) {
+    await persistMessage(nextConversationId, {
+      role: 'user',
+      content: params.input,
+      modelId: null,
+    });
+  }
+
+  const responseIndicator = createCliStatusIndicator();
+  let responseText = '';
+  let started = false;
+
+  responseIndicator.start(`[chat] ${params.currentModel} thinking...`);
+
+  try {
+    const stream = params.client.streamCompletion({
+      model: params.currentModel,
+      messages: params.history.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+    });
+
+    while (true) {
+      const next = await stream.next();
+
+      if (next.done) {
+        if (responseIndicator.isActive()) {
+          responseIndicator.succeed(`[chat] ${params.currentModel} done`);
+        }
+
+        process.stdout.write('\n');
+        console.log(
+          `[chat] Tokens: input=${next.value.usage.promptTokens} output=${next.value.usage.completionTokens}`
+        );
+
+        params.history.push({ role: 'assistant', content: responseText });
+        if (nextConversationId) {
+          await persistMessage(nextConversationId, {
+            role: 'assistant',
+            content: responseText,
+            modelId: params.currentModel,
+          });
+        }
+        break;
+      }
+
+      if (!next.value.text) continue;
+
+      if (!started) {
+        responseIndicator.succeed(`[chat] ${params.currentModel}:`);
+        started = true;
+      }
+
+      process.stdout.write(next.value.text);
+      responseText += next.value.text;
+    }
+  } catch (error) {
+    if (responseIndicator.isActive()) {
+      responseIndicator.fail(`[chat] ${params.currentModel} failed`);
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[chat] Error: ${message}`);
+    params.history.pop();
+    if (nextConversationId) {
+      await deleteLastUserMessage(nextConversationId);
+    }
+  }
+
+  return true;
+}
+
+function resolveInitialChatPrompt(promptParts: string[]): string | null {
+  const prompt = promptParts.join(' ').trim();
+  return prompt.length > 0 ? prompt : null;
 }
 
 async function handleChatUpgrade(params: {
@@ -397,4 +493,3 @@ function processChatError(error: unknown): void {
   console.error(`[chat] ${message}`);
   process.exitCode = 1;
 }
-

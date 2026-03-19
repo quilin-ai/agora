@@ -15,13 +15,30 @@ import { RiskControlError, validateTopicInput } from '@/lib/security/risk-contro
 
 export function registerAskCommand(program: Command): void {
   program
-    .command('ask')
-    .description('Ask a single model question')
-    .requiredOption('-q, --question <question>', 'Question to ask')
+    .command('ask [question...]')
+    .alias('a')
+    .description('Ask one model')
+    .option('-q, --question <question>', 'Question text. Optional if passed positionally')
     .option('-m, --model <model>', 'Model ID to use')
-    .action(async (options: { question: string; model?: string }) => {
+    .addHelpText(
+      'after',
+      `
+Examples:
+  agora a "Is now a good time to launch a finance AI copilot?"
+  agora ask "Summarize the current AI inference market"
+  agora ask -q "What changed in AI infra this week?" -m openai/gpt-oss-120b:free
+
+Notes:
+  - You can pass the question either positionally or with -q/--question.
+  - The short form is: agora a "..."
+`
+    )
+    .action(async (questionParts: string[], options: { question?: string; model?: string }) => {
       try {
-        await handleAsk(options);
+        await handleAsk({
+          question: resolveQuestionInput(questionParts, options.question),
+          model: options.model,
+        });
       } catch (error) {
         processAskError(error);
       }
@@ -176,4 +193,15 @@ function processAskError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[ask] ${message}`);
   process.exitCode = 1;
+}
+
+function resolveQuestionInput(questionParts: string[], optionQuestion?: string): string {
+  const positionalQuestion = questionParts.join(' ').trim();
+  const resolvedQuestion = optionQuestion?.trim() || positionalQuestion;
+
+  if (!resolvedQuestion) {
+    throw new Error('Question is required. Use `agora ask -q "..."` or `agora a "..."`.');
+  }
+
+  return resolvedQuestion;
 }

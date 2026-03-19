@@ -72,24 +72,69 @@ class CouncilRunCancelledError extends Error {
 export function registerCouncilCommands(program: Command): void {
   const council = program
     .command('council')
-    .description('Council discussion commands');
+    .description('Manage council workflows')
+    .addHelpText(
+      'after',
+      `
+Primary entrypoint:
+  agora t "Should we ship CLI-first?"
 
-  council
-    .command('run')
-    .description('Run a council discussion')
-    .option('-t, --topic <topic>', 'Discussion topic')
-    .option('-m, --models <models...>', 'Model IDs to participate')
-    .option('-d, --discussion-id <discussionId>', 'Attach to an existing discussion')
-    .action(async (options: CouncilRunOptions) => {
+Main subcommands:
+  run        compatibility entrypoint for \`agora t\`
+  upgrade    turn a chat conversation into a council discussion
+  replay     replay saved event logs from a previous discussion
+  export     export a completed discussion summary
+  followup   ask follow-up questions after a discussion completes
+
+Examples:
+  agora t "Should we ship CLI-first?"
+  agora council replay --last
+  agora council export <discussion-id> --format markdown
+  agora council followup <discussion-id> "What changed your mind?"
+`
+    );
+
+  registerCouncilRunCommand(council, 'run [topic...]', 'Compatibility entrypoint for `agora t`');
+  registerCouncilRunCommand(program, 't [topic...]', 'Start or attach to a council');
+
+  registerCouncilUpgradeCommand(council);
+  registerCouncilToolCommands(council);
+}
+
+function registerCouncilRunCommand(
+  parent: Command,
+  commandName: string,
+  description: string
+): void {
+  parent
+    .command(commandName)
+    .description(description)
+    .option('-t, --topic <topic>', 'Discussion topic. Optional if passed positionally')
+    .option('-m, --models <models...>', 'Participant model IDs')
+    .option('-d, --discussion-id <discussionId>', 'Attach to an existing discussion instead of creating a new one')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  agora t "Should a small AI startup win with a CLI first?"
+  agora t -t "What is the best GTM for a new AI product?" -m openai/gpt-oss-120b:free qwen/qwen3-next-80b-a3b-instruct:free
+  agora t -d <discussion-id>
+
+Notes:
+  - You can pass the topic either positionally or with -t/--topic.
+  - \`agora council run ...\` still works for compatibility.
+`
+    )
+    .action(async (topicParts: string[], options: CouncilRunOptions) => {
       try {
-        await handleCouncilRun(options);
+        await handleCouncilRun({
+          ...options,
+          topic: resolveTopicInput(topicParts, options.topic),
+        });
       } catch (error) {
         processCouncilRunError(error);
       }
     });
-
-  registerCouncilUpgradeCommand(council);
-  registerCouncilToolCommands(council);
 }
 
 async function handleCouncilRun(options: CouncilRunOptions): Promise<void> {
@@ -627,4 +672,9 @@ function processCouncilRunError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[council run] ${message}`);
   process.exitCode = 1;
+}
+
+function resolveTopicInput(topicParts: string[], optionTopic?: string): string | undefined {
+  const positionalTopic = topicParts.join(' ').trim();
+  return optionTopic?.trim() || positionalTopic || undefined;
 }

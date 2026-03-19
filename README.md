@@ -9,6 +9,10 @@
   <img src="https://img.shields.io/badge/release_model-open_core-7c3aed" alt="Open core" />
 </p>
 
+<p align="center">
+  <img src="./agora_logo_pixel.png" alt="Agora pixel logo" width="780" />
+</p>
+
 面向多模型协作推理的 CLI-first 讨论引擎。  
 A CLI-first discussion engine for multi-model collaborative reasoning.
 
@@ -23,11 +27,13 @@ In the long-term plan, the core engine, CLI, and TUI will be open source, while 
 - [项目简介 / Overview](#项目简介--overview)
 - [为什么是 Agora / Why Agora](#为什么是-agora--why-agora)
 - [当前开源边界 / Open Source Boundary](#当前开源边界--open-source-boundary)
+- [先试这 3 条 / Start With These 3](#先试这-3-条--start-with-these-3)
 - [核心特性 / Key Features](#核心特性--key-features)
 - [架构概览 / Architecture](#架构概览--architecture)
 - [截图占位 / Screenshot Placeholders](#截图占位--screenshot-placeholders)
 - [安装方式 / Installation](#安装方式--installation)
 - [快速开始 / Quick Start](#快速开始--quick-start)
+- [CLI 入口 / CLI Entrypoints](#cli-入口--cli-entrypoints)
 - [命令说明 / Commands](#命令说明--commands)
 - [常见问题 / FAQ](#常见问题--faq)
 - [路线图 / Roadmap](#路线图--roadmap)
@@ -46,11 +52,55 @@ Its goal is not to stack more models for the sake of it, but to turn "independen
 当前仓库主要包含两部分：共享核心引擎，以及面向本地运行和验证的 CLI。  
 This repository currently contains two major parts: the shared core engine and a CLI for local runs and validation.
 
-当前已落地的真实命令是 `agora ask` 与 `agora council run`。  
-The currently implemented production-path commands are `agora ask` and `agora council run`.
+当前已落地的真实命令入口是 `agora t`、`agora a` 与 `agora c`，同时兼容 `agora council run`、`agora ask` 与 `agora chat`。  
+The current production entrypoints are `agora t`, `agora a`, and `agora c`, while `agora council run`, `agora ask`, and `agora chat` remain available for compatibility.
+
+当你直接运行 `agora` 且不带参数时，CLI 会清屏并展示一个置顶欢迎页，优先引导你从 `t`、`a`、`c` 三条主入口开始。  
+When you run `agora` with no arguments, the CLI clears the screen and shows a pinned welcome view that leads with the three primary entrypoints: `t`, `a`, and `c`.
 
 构建顺序和任务图以 [技术文档.md](./技术文档.md) 为唯一源头，以 [docs/spec/BUILD_ORDER.md](./docs/spec/BUILD_ORDER.md) 为摘要入口。  
 The single source of truth for scope is [技术文档.md](./技术文档.md), while [docs/spec/BUILD_ORDER.md](./docs/spec/BUILD_ORDER.md) provides the execution-order summary.
+
+## 先试这 3 条 / Start With These 3
+
+如果你已经完成本地安装，最值得先试的是下面三条命令。  
+If you already have the CLI installed locally, these are the three commands worth trying first.
+
+### 1. 用 council 讨论一个真正有争议的问题 / Use A Council For A Real Debate
+
+这是 Agora 最核心的入口。  
+This is the core Agora experience.
+
+```bash
+agora t "Should a small AI startup win with a CLI first, or launch a polished web app first?"
+```
+
+适合：产品方向、定价取舍、组织决策、上线节奏、强时效判断。  
+Best for: product direction, pricing tradeoffs, organizational decisions, launch sequencing, and time-sensitive judgment.
+
+### 2. 先快速问一个问题 / Ask One Question Fast
+
+当你想先确认环境、模型和基本回答质量时，用 `a` 最直接。  
+When you want to verify the environment, the model, and baseline answer quality, `a` is the fastest path.
+
+```bash
+agora a "Will AI coding agents replace most junior developer work in the next three years?"
+```
+
+适合：快速试跑、单问单答、先验证模型再进入更重的工作流。  
+Best for: quick smoke runs, single-shot questions, and validating the setup before moving into a heavier workflow.
+
+### 3. 进入持续对话 / Start A Persistent Chat
+
+当你已经有一个方向，想在单模型上下文中持续迭代、追问和收敛时，用 `c`。  
+When you already have a direction and want to iterate, challenge, and refine it inside one model context, use `c`.
+
+```bash
+agora c "Help me stress-test a product plan before I commit to it."
+```
+
+适合：计划打磨、长一点的来回讨论、围绕同一上下文持续推进。  
+Best for: plan refinement, longer back-and-forth conversations, and sustained progress within one context.
 
 ## 为什么是 Agora / Why Agora
 
@@ -134,8 +184,19 @@ The key constraints are:
 当前仓库先公开核心引擎与 CLI，因此视觉素材会比典型 Web 项目更少。  
 This repository is publishing the core engine and CLI first, so visual assets are naturally lighter than in a typical Web project.
 
-下面是预留给公开仓库首页的截图占位区域。  
-Below is a reserved screenshot placeholder section for the public repository homepage.
+当前已经附上一张 CLI 首页实拍图，以及 logo 图资源。  
+The repository now includes a real CLI home screenshot and a dedicated logo asset.
+
+### CLI 首页 / CLI Home
+
+![Agora CLI home](./agora_readme.png)
+
+### Logo / Logo
+
+![Agora pixel logo](./agora_logo_pixel.png)
+
+下面表格保留为后续补充更多公开素材的规划位。  
+The table below remains as a planning surface for adding more public assets later.
 
 | 模块 / Surface | 说明 / Description | 状态 / Status |
 | --- | --- | --- |
@@ -188,6 +249,18 @@ agora --help
 If you do not want a global link, you can use `pnpm agora` directly.
 
 ## 快速开始 / Quick Start
+
+### 0. 先看 CLI 首页 / See The CLI Home First
+
+如果你已经完成安装并链接了本地命令，先直接运行一次 `agora`。  
+If you have already installed and linked the local command, start by running `agora` once.
+
+```bash
+agora
+```
+
+无参数启动时会清屏并展示彩色 logo、推荐工作流和最常用命令入口。  
+Launching with no arguments clears the screen and shows the colored logo, suggested workflows, and the most important command entrypoints.
 
 ### 1. 准备环境变量 / Prepare Environment Variables
 
@@ -279,33 +352,17 @@ You can verify database connectivity with:
 ./run.sh test pnpm db:check
 ```
 
-### 3. 运行单模型提问 / Ask A Single Model
-
-推荐先使用 `run.sh` 让环境变量注入方式和仓库默认约定保持一致。  
-It is recommended to start with `run.sh` so environment loading matches the repository convention.
+### 3. 运行多模型讨论 / Run A Council Discussion
 
 ```bash
-./run.sh test agora ask -q "What are the main trade-offs of PostgreSQL transaction pooling?"
-```
-
-如果需要手动指定模型：  
-If you want to override the model explicitly:
-
-```bash
-./run.sh test agora ask -q "Summarize the current AI inference market" -m openai/gpt-oss-120b:free
-```
-
-### 4. 运行多模型讨论 / Run A Council Discussion
-
-```bash
-./run.sh test agora council run -t "Should a small AI product start with CLI-first instead of Web-first?"
+./run.sh test agora t "Should a small AI product start with CLI-first instead of Web-first?"
 ```
 
 如果需要显式指定参与模型：  
 If you want to choose participant models explicitly:
 
 ```bash
-./run.sh test agora council run \
+./run.sh test agora t \
   -t "Should a small AI product start with CLI-first instead of Web-first?" \
   -m openai/gpt-oss-120b:free qwen/qwen3-next-80b-a3b-instruct:free meta-llama/llama-3.3-70b-instruct:free
 ```
@@ -314,7 +371,29 @@ If you want to choose participant models explicitly:
 If you want to attach to an existing discussion:
 
 ```bash
-./run.sh test agora council run -d <discussion-id>
+./run.sh test agora t -d <discussion-id>
+```
+
+### 4. 运行单模型提问 / Ask A Single Model
+
+推荐先使用 `run.sh` 让环境变量注入方式和仓库默认约定保持一致。  
+It is recommended to start with `run.sh` so environment loading matches the repository convention.
+
+```bash
+./run.sh test agora a "What are the main trade-offs of PostgreSQL transaction pooling?"
+```
+
+如果需要手动指定模型：  
+If you want to override the model explicitly:
+
+```bash
+./run.sh test agora a "Summarize the current AI inference market" -m openai/gpt-oss-120b:free
+```
+
+### 5. 进入多轮聊天 / Start A Chat Session
+
+```bash
+./run.sh test agora c "Help me stress-test a product plan before I commit to it."
 ```
 
 如果你已经把 `agora` 全局链接到了 shell，也可以手动加载环境后直接运行：  
@@ -325,38 +404,45 @@ set -a
 source .env.test
 export AGORA_RUNTIME_ENV=test
 set +a
-agora ask -q "Hello from Agora"
+agora a "Hello from Agora"
 ```
+
+## CLI 入口 / CLI Entrypoints
+
+当前文档、帮助页和欢迎页都按照同一优先级展示命令。  
+The README, help output, and welcome screen now present the commands in the same priority order.
+
+1. `agora t`  
+   主入口，用于发起或附着到一场多模型 council 讨论。  
+   Primary entrypoint for starting or attaching to a multi-model council discussion.
+2. `agora a`  
+   最低摩擦入口，用于快速问一个问题并验证模型与环境是否正常。  
+   Lowest-friction entrypoint for asking one question and verifying that models and environment are working.
+3. `agora c`  
+   单模型多轮对话入口，支持空启动进入交互模式，也支持直接带第一句 prompt 启动。  
+   Single-model multi-turn chat entrypoint. It supports both an empty interactive start and an initial prompt passed directly on launch.
+
+兼容长命令仍然保留，但不再是首页主展示。  
+The long-form commands are still supported, but they are no longer the primary surface shown first.
+
+- `agora council run ...` → `agora t ...`  
+  `agora council run ...` → `agora t ...`
+- `agora ask ...` → `agora a ...`  
+  `agora ask ...` → `agora a ...`
+- `agora chat ...` → `agora c ...`  
+  `agora chat ...` → `agora c ...`
 
 ## 命令说明 / Commands
 
-### `agora ask`
-
-用于向单个模型发起一次提问。  
-Use this command to ask a single model one question.
-
-```bash
-agora ask --question "..."
-agora ask --question "..." --model <model-id>
-```
-
-参数说明：  
-Options:
-
-- `-q, --question <question>`：必填问题文本。  
-  `-q, --question <question>`: required question text.
-- `-m, --model <model>`：可选模型覆盖。  
-  `-m, --model <model>`: optional model override.
-
-### `agora council run`
+### `agora t`
 
 用于创建或附着到一个多模型 council discussion。  
 Use this command to create or attach to a multi-model council discussion.
 
 ```bash
-agora council run --topic "..."
-agora council run --topic "..." --models <model-a> <model-b> <model-c>
-agora council run --discussion-id <discussion-id>
+agora t "..."
+agora t --topic "..." --models <model-a> <model-b> <model-c>
+agora t --discussion-id <discussion-id>
 ```
 
 参数说明：  
@@ -368,6 +454,64 @@ Options:
   `-m, --models <models...>`: participant model IDs.
 - `-d, --discussion-id <discussionId>`：附着到已有 discussion。  
   `-d, --discussion-id <discussionId>`: attach to an existing discussion.
+
+兼容长命令：`agora council run`。  
+Compatible long form: `agora council run`.
+
+### `agora a`
+
+用于向单个模型发起一次提问。  
+Use this command to ask a single model one question.
+
+```bash
+agora a "..."
+agora a "..." --model <model-id>
+```
+
+参数说明：  
+Options:
+
+- `-q, --question <question>`：必填问题文本。  
+  `-q, --question <question>`: required question text.
+- `-m, --model <model>`：可选模型覆盖。  
+  `-m, --model <model>`: optional model override.
+
+兼容长命令：`agora ask --question "..."`。  
+Compatible long form: `agora ask --question "..."`
+
+### `agora c`
+
+用于启动或恢复单模型多轮对话。  
+Use this command to start or resume a single-model multi-turn chat session.
+
+```bash
+agora c
+agora c "Help me stress-test a product plan before I commit to it."
+agora c --model <model-id>
+agora c --conversation-id <conversation-id>
+agora c --conversation-id <conversation-id> "Continue from the strongest objection."
+```
+
+参数说明：  
+Options:
+
+- `-m, --model <model>`：指定会话模型。  
+  `-m, --model <model>`: choose the model for the chat session.
+- `-c, --conversation-id <conversationId>`：恢复已有 chat 会话。  
+  `-c, --conversation-id <conversationId>`: resume an existing chat conversation.
+
+补充说明：位置参数 prompt 是可选的。  
+Additional note: the positional prompt is optional.
+
+- `agora c` 会进入空的交互式会话。  
+  `agora c` enters an empty interactive session.
+- `agora c "..."` 会在启动后立即发送第一条消息。  
+  `agora c "..."` sends the first message immediately after startup.
+- `agora c -c <conversation-id> "..."` 会恢复旧会话并立刻继续。  
+  `agora c -c <conversation-id> "..."` resumes an existing session and continues immediately.
+
+兼容长命令：`agora chat`。  
+Compatible long form: `agora chat`.
 
 ## 讨论流程 / Discussion Flow
 
@@ -405,11 +549,27 @@ These files are primarily for replay and debug, not the canonical state.
 
 ### 这个项目现在能做什么？ / What can the project do right now?
 
-目前已打通的真实命令是 `agora ask` 和 `agora council run`。  
-The currently working production-path commands are `agora ask` and `agora council run`.
+目前已打通的真实主入口是 `agora t`、`agora a` 和 `agora c`。  
+The currently working primary entrypoints are `agora t`, `agora a`, and `agora c`.
 
 围绕完整 CLI 的工程化加固仍在 Phase A2 中继续推进。  
 Engineering hardening for the full CLI is still being advanced in Phase A2.
+
+### 直接运行 `agora` 会发生什么？ / What happens if I run `agora` directly?
+
+无参数运行时，CLI 会清空当前终端显示，并在顶部展示 logo、推荐工作流和快捷入口。  
+When run without arguments, the CLI clears the terminal and shows the logo, suggested workflows, and shortcut entrypoints at the top.
+
+非 TTY 场景下会回退到普通帮助输出。  
+In non-TTY environments it falls back to standard help output.
+
+### 我应该先用 `t`、`a` 还是 `c`？ / Should I start with `t`, `a`, or `c`?
+
+推荐顺序是 `t`、`a`、`c`。  
+The recommended order is `t`, then `a`, then `c`.
+
+`t` 代表 Agora 的核心差异化能力，`a` 最适合做快速试跑，`c` 更适合在单模型上下文中持续深入。  
+`t` represents Agora's core differentiator, `a` is best for a quick smoke run, and `c` is better for sustained iteration inside a single-model context.
 
 ### 现在就能直接 `npm install -g` 吗？ / Can I `npm install -g` it today?
 
@@ -455,7 +615,7 @@ If you plan to publish the repository publicly, you should add the license and r
 
 | 阶段 / Phase | 状态 / Status | 目标 / Goals | 公开边界 / Release Boundary |
 | --- | --- | --- | --- |
-| Phase A1 | 已完成。<br>Completed. | 最小引擎闭环：`ask`、`council run`、3 轮讨论、匿名化、书记员总结、JSONL。<br>Minimum engine loop: `ask`, `council run`, three rounds, anonymization, secretary summary, and JSONL logs. | 开源。<br>Open. |
+| Phase A1 | 已完成。<br>Completed. | 最小引擎闭环：`a`、`t`、3 轮讨论、匿名化、书记员总结、JSONL。<br>Minimum engine loop: `a`, `t`, three rounds, anonymization, secretary summary, and JSONL logs. | 开源。<br>Open. |
 | Phase A2 | 进行中。<br>In progress. | 计费、完整 CLI、事件契约一致性、测试矩阵、grounding 工程化。<br>Billing, full CLI, event-contract alignment, test matrix, and grounding hardening. | 开源。<br>Open. |
 | Phase B | 未开始。<br>Not started. | Web 最小壳接入，同一套 core 驱动 Web renderer。<br>Minimal Web shell on top of the same core renderer boundary. | Core 开源，Web 产品层私有。<br>Core open, product Web layer private. |
 | Phase C | 未开始。<br>Not started. | 产品化完善、页面、后台、国际化、分享、监控与部署验收。<br>Productization work including pages, back office, i18n, sharing, monitoring, and deployment acceptance. | 混合模式。<br>Mixed boundary. |

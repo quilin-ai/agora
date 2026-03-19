@@ -57,6 +57,15 @@ const PHASE_LABELS: Record<string, string> = {
   summary: 'secretary summary',
   summarizing: 'secretary summary',
 };
+const AGORA_LOGO_ROWS = [
+  ' █████╗  ███████╗   █████╗  ██████╗   █████╗',
+  '██╔══██╗ ██╔════╝  ██╔══██╗ ██╔══██╗ ██╔══██╗',
+  '███████║ ██║  ███╗ ██║  ██║ ██████╔╝ ███████║',
+  '██╔══██║ ██║   ██║ ██║  ██║ ██╔══██╗ ██╔══██║',
+  '██║  ██║ ╚██████╔╝ ╚█████╔╝ ██║  ██║ ██║  ██║',
+  '╚═╝  ╚═╝  ╚═════╝   ╚════╝  ╚═╝  ╚═╝ ╚═╝  ╚═╝',
+] as const;
+const AGORA_LOGO_COLORS = ['#59B7FF', '#7B8CFF', '#A879FF', '#C77FEA', '#D97DCE'] as const;
 
 function formatElapsedSeconds(seconds: number): string {
   if (seconds < 60) {
@@ -74,6 +83,71 @@ export function formatCliElapsedMs(durationMs: number): string {
 
 export function formatCliPhaseLabel(phase: string): string {
   return PHASE_LABELS[phase] ?? phase.replaceAll('_', ' ');
+}
+
+export function renderCliWelcome(version = '0.1.0', stdout: CliWriteStream = process.stdout): void {
+  const writeLine = (line = ''): void => {
+    stdout.write(`${line}\n`);
+  };
+
+  if (stdout.isTTY) {
+    stdout.write('\x1b[2J\x1b[H');
+  }
+
+  const logo = renderAgoraLogo();
+  const featuredWorkflows = [
+    [
+      'Product strategy',
+      'Should a small AI startup win with a CLI first, or launch a polished web app first?',
+      'agora t "Should a small AI startup win with a CLI first, or launch a polished web app first?"',
+    ],
+    [
+      'Fast take',
+      'Will AI coding agents replace most junior developer work in the next three years?',
+      'agora a "Will AI coding agents replace most junior developer work in the next three years?"',
+    ],
+    [
+      'Deep dive',
+      'Help me stress-test a product plan before I commit to it.',
+      'agora c "Help me stress-test a product plan before I commit to it."',
+    ],
+  ] as const;
+  const secondaryWorkflows = [
+    [
+      'Pricing debate',
+      'agora t "Is monthly subscription pricing better than usage-based pricing for a new AI product?"',
+    ],
+    [
+      'Market timing',
+      'agora a "Is now the right time to launch a finance AI copilot?"',
+    ],
+    ['Resume a chat', 'agora c -c <conversation-id>'],
+  ] as const;
+  const divider = renderWelcomeDivider(stdout.columns ?? 100);
+
+  writeLine(logo);
+  writeLine();
+  writeLine(
+    `${chalk.bold.white('Agora')} ${formatWelcomeBadge(`v${version}`)} ${chalk.dim('CLI-first council engine')}`
+  );
+  writeLine(chalk.dim('Debate before you decide.'));
+  writeLine(chalk.dim('Use councils for hard calls, tradeoffs, disagreement, and time-sensitive judgment.'));
+  writeLine(divider);
+  writeLine();
+  writeLine(formatSectionHeader('START WITH THESE'));
+  writeLine();
+  for (const [index, [label, description, command]] of featuredWorkflows.entries()) {
+    writeLine(formatFeaturedWorkflow(index + 1, label, description, command));
+    writeLine();
+  }
+  writeLine(divider);
+  writeLine();
+  writeLine(formatSectionHeader('EXPLORE MORE'));
+  for (const [label, command] of secondaryWorkflows) {
+    writeLine(formatMiniWorkflow(label, command));
+  }
+  writeLine();
+  writeLine(`${chalk.dim('Need the full command surface?')} ${formatInlineCommand('agora --help')}`);
 }
 
 export function createCliStatusIndicator(
@@ -233,6 +307,142 @@ export function createCliStatusIndicator(
     isActive() {
       return startedAt !== null;
     },
+  };
+}
+
+function renderAgoraLogo(): string {
+  const visibleColumns = getVisibleColumns(AGORA_LOGO_ROWS);
+  const visibleColumnIndex = new Map(visibleColumns.map((column, index) => [column, index]));
+  const span = Math.max(1, visibleColumns.length - 1);
+
+  return AGORA_LOGO_ROWS.map((row) => {
+    let rendered = '';
+
+    for (let index = 0; index < row.length; index += 1) {
+      const char = row[index];
+
+      if (char === ' ') {
+        rendered += char;
+        continue;
+      }
+
+      const visibleIndex = visibleColumnIndex.get(index) ?? 0;
+      const color = getInterpolatedThemeColor(AGORA_LOGO_COLORS, visibleIndex / span);
+      rendered += chalk.rgb(color.r, color.g, color.b)(char);
+    }
+
+    return rendered;
+  }).join('\n');
+}
+
+function renderWelcomeDivider(columns: number): string {
+  return chalk.hex('#3B4170')('─'.repeat(Math.max(36, Math.min(columns - 2, 72))));
+}
+
+function formatWelcomeBadge(text: string): string {
+  return chalk.bgHex('#2F355E').hex('#D7DDFF')(` ${text} `);
+}
+
+function formatSectionHeader(text: string): string {
+  return chalk.bgHex('#1F2440').hex('#C7D2FF')(` ${text} `);
+}
+
+function formatStepBadge(step: number): string {
+  return chalk.bgHex('#222A4A').hex('#7B8CFF')(` ${String(step).padStart(2, '0')} `);
+}
+
+function formatCommandLine(command: string): string {
+  const parts = command.match(/"[^"]*"|\S+/g) ?? [command];
+  const rendered = parts.map((part, index) => {
+    if (index === 0) {
+      return chalk.bold.white(part);
+    }
+
+    if (part.startsWith('-')) {
+      return chalk.hex('#A879FF')(part);
+    }
+
+    if (part.startsWith('"') && part.endsWith('"')) {
+      return chalk.hex('#7FD7C9')(part);
+    }
+
+    if (part.startsWith('<') && part.endsWith('>')) {
+      return chalk.hex('#D97DCE')(part);
+    }
+
+    return chalk.hex('#67D9FF')(part);
+  });
+
+  return `${chalk.dim('$')} ${rendered.join(' ')}`;
+}
+
+function formatInlineCommand(command: string): string {
+  return chalk.whiteBright(command);
+}
+
+function formatFeaturedWorkflow(
+  step: number,
+  label: string,
+  description: string,
+  command: string
+): string {
+  const rail = chalk.hex('#3F4C86')('│');
+  return [
+    `${formatStepBadge(step)} ${chalk.bold.white(label)}`,
+    `   ${rail} ${chalk.dim(description)}`,
+    `   ${rail} ${formatCommandLine(command)}`,
+  ].join('\n');
+}
+
+function formatMiniWorkflow(label: string, command: string): string {
+  return `${chalk.hex('#67D9FF')('•')} ${chalk.white(label)}  ${chalk.dim('·')}  ${formatCommandLine(command)}`;
+}
+
+function getVisibleColumns(rows: readonly string[]): number[] {
+  const columns = new Set<number>();
+
+  for (const row of rows) {
+    for (let index = 0; index < row.length; index += 1) {
+      if (row[index] !== ' ') {
+        columns.add(index);
+      }
+    }
+  }
+
+  return [...columns].sort((left, right) => left - right);
+}
+
+function getInterpolatedThemeColor(
+  colors: readonly string[],
+  position: number
+): { r: number; g: number; b: number } {
+  const palette = colors.map((color) => parseHexColor(color));
+  const segmentCount = palette.length - 1;
+  const scaled = Math.max(0, Math.min(1, position)) * segmentCount;
+  const index = Math.min(Math.floor(scaled), segmentCount - 1);
+  const factor = scaled - index;
+
+  return interpolateRgb(palette[index], palette[index + 1], factor);
+}
+
+function parseHexColor(hex: string): { r: number; g: number; b: number } {
+  const normalized = hex.replace('#', '');
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+function interpolateRgb(
+  start: { r: number; g: number; b: number },
+  end: { r: number; g: number; b: number },
+  factor: number
+): { r: number; g: number; b: number } {
+  return {
+    r: Math.round(start.r + (end.r - start.r) * factor),
+    g: Math.round(start.g + (end.g - start.g) * factor),
+    b: Math.round(start.b + (end.b - start.b) * factor),
   };
 }
 
