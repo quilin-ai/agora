@@ -68,9 +68,10 @@ function platformPrice(rawCost: number): number {
 // ─── estimateRawCost ──────────────────────────────────────────────────────────
 
 describe('estimateRawCost', () => {
+  // pricingData 采用生产语义：input/output 为「每 1M token」价格（同 seed-phase-a1.ts）。
   const pricingData = {
-    'openai/gpt-4': { input: 0.00003, output: 0.00006 },
-    'anthropic/claude-3': { input: 0.000015, output: 0.000075 },
+    'openai/gpt-4': { input: 30, output: 60 },
+    'anthropic/claude-3': { input: 15, output: 75 },
   };
 
   it('returns raw_cost as a number without applying fees', () => {
@@ -82,7 +83,7 @@ describe('estimateRawCost', () => {
       estimatedOutputTokensPerModel: 200,
     });
 
-    // raw_cost = (1000 * 0.00003 + 200 * 0.00006) * 3 = (0.03 + 0.012) * 3 = 0.126
+    // per-1M: ((1000/1e6)*30 + (200/1e6)*60) * 3 = (0.03 + 0.012) * 3 = 0.126
     expect(cost).toBe(0.126);
     // 确认没有乘费率
     expect(cost).toBeLessThan(cost * BILLING_CONSTANTS.OPENROUTER_FEE);
@@ -97,7 +98,7 @@ describe('estimateRawCost', () => {
       estimatedOutputTokensPerModel: 0,
     });
 
-    // 1000 * 0.00003 + 1000 * 0.000015 = 0.03 + 0.015 = 0.045
+    // per-1M: (1000/1e6)*30 + (1000/1e6)*15 = 0.03 + 0.015 = 0.045
     expect(cost).toBe(0.045);
   });
 
@@ -109,6 +110,36 @@ describe('estimateRawCost', () => {
     });
 
     expect(cost).toBe(0);
+  });
+
+  // 回归：用生产 seed 量级的定价，hold 金额必须落在合理区间（几美分），
+  // 而不是因单位漂移 10^6 倍导致 InsufficientCredits / 天价 hold。
+  it('keeps hold in a sane range with production seed-magnitude pricing', async () => {
+    // 与 scripts/seed-phase-a1.ts 一致的每-1M 定价子集
+    const seedPricing = {
+      'anthropic/claude-opus-4.6': { input: 5.0, output: 25.0 },
+      'openai/gpt-5.4': { input: 2.5, output: 15.0 },
+      'google/gemini-3.1-pro': { input: 2.0, output: 12.0 },
+    };
+
+    const estimated = estimateRawCost({
+      models: Object.keys(seedPricing),
+      maxRounds: 3,
+      pricingData: seedPricing,
+    });
+
+    // 默认 2000 in / 500 out per model per round，3 模型 3 轮 → 约 $0.135 raw cost
+    expect(estimated).toBeGreaterThan(0);
+    expect(estimated).toBeLessThan(1);
+
+    const { store, state } = createMemoryStore(100);
+    const { heldPlatformAmount } = await hold(USER_ID, DISCUSSION_ID, estimated, SNAPSHOT_ID, store);
+
+    // platform_price = raw * 1.055 * 1.15，仍应是几毛钱量级，远小于 100 余额
+    expect(heldPlatformAmount).toBe(platformPrice(estimated));
+    expect(heldPlatformAmount).toBeGreaterThan(0);
+    expect(heldPlatformAmount).toBeLessThan(1);
+    expect(state.balance).toBeCloseTo(100 - heldPlatformAmount, 4);
   });
 });
 
