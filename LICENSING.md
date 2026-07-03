@@ -1,49 +1,56 @@
 # Licensing
 
-This repository is not released under an OSI-approved open-source license.
-
-The code is source-available under the custom [Agora Community License 1.0](./LICENSE).
+This repository is source-available under the [Sustainable Use License](./LICENSE)
+(Version 1.1), the same license family used by projects such as n8n. It is not an
+OSI-approved open-source license.
 
 The practical intent is:
 
-- you may read the code;
-- you may modify the code;
-- you may share the code and your modifications for noncommercial purposes;
-- you may not use the code or modifications for commercial purposes;
-- if you distribute a modified version, you must provide the corresponding source code;
-- if you run a modified version as a service for external users, you must provide the corresponding source code to those users;
-- you may not turn the project or your derivative work into a closed-source release.
+- you may read, modify, and self-host the code;
+- you may use it for your own internal business purposes, including evaluating
+  and using it inside a company or startup at work;
+- you may distribute the code and your modifications, but only free of charge and
+  for non-commercial purposes;
+- you may not offer the software to third parties as a hosted or managed service
+  that exposes a substantial set of its features;
+- you must keep the license and copyright notices, and mark any modifications.
 
 ## FAQ
 
 ### Is this open source?
 
-No. Commercial use is prohibited, so this repository is source-available rather than open source in the OSI sense.
+Not in the OSI sense. It is source-available under the Sustainable Use License:
+broad internal and non-commercial use is allowed, but reselling it as a hosted
+service is not.
 
-### Can I fork it?
+### Can I use it at work / inside my company?
 
-Yes, for noncommercial purposes.
+Yes. Internal business use is explicitly permitted. You can evaluate it, run it
+on your own infrastructure, and use it as part of your internal workflows.
 
-### Can I modify it?
+### Can I fork and modify it?
 
-Yes, for noncommercial purposes.
+Yes. You may modify it for internal business, non-commercial, or personal use.
 
 ### Can I share my modified fork?
 
-Yes, but only for noncommercial purposes, and you must make the corresponding source code available under the same license.
+Yes, but only free of charge and for non-commercial purposes, and you must keep
+the notices and mark your changes.
 
-### Can I run a modified hosted version for outside users?
+### Can I sell it or run it as a paid/hosted service for others?
 
-Only for noncommercial purposes, and only if those users can obtain the corresponding source code under the same license.
+No. You may not provide the software to third parties as a hosted or managed
+service that gives them access to a substantial set of its features. Contact the
+Owner if you need a commercial arrangement.
 
-### Can I use it inside a startup or company?
+### Who owns the project and can it be relicensed later?
 
-Not for commercial operations without separate written permission. Internal evaluation is allowed only on a noncommercial basis.
+The Owner is Rayson Meng. Contributions are accepted under a
+[Contributor License Agreement](./CLA.md) that lets the Owner relicense the
+project in the future, including under closed-source, commercial, or
+dual-license terms.
 
-### Can I use parts of the code in another project?
+### Can I get a commercial license?
 
-Only on a noncommercial basis, and if the resulting derivative work is distributed or exposed to external users, the corresponding source must be made available under the same license.
-
-### Can I buy a commercial license later?
-
-Possibly. Contact the repository owner if you need commercial use rights.
+Possibly. Contact the Owner if you need rights beyond those granted by the
+Sustainable Use License.
