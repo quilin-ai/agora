@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/pnpm-10.32.1-F69220?logo=pnpm&logoColor=white" alt="pnpm 10.32.1" />
   <img src="https://img.shields.io/badge/runtime-CLI--first-0f766e" alt="CLI first" />
   <img src="https://img.shields.io/badge/status-Phase_A2_in_progress-2563eb" alt="Phase A2 in progress" />
-  <img src="https://img.shields.io/badge/license-source--available_noncommercial-7c3aed" alt="Source-available noncommercial" />
+  <img src="https://img.shields.io/badge/license-Sustainable_Use_License_1.1-7c3aed" alt="Sustainable Use License 1.1" />
 </p>
 
 <p align="center">
@@ -19,8 +19,8 @@ A CLI-first discussion engine for multi-model collaborative reasoning.
 Agora 不把“问一个模型拿一个答案”当作默认交互，而是让多个模型围绕同一议题进行三轮讨论、匿名互评，并由书记员模型输出结构化总结。  
 Agora does not treat "ask one model, get one answer" as the default interaction; it runs a three-round council with anonymous peer review and a structured secretary summary.
 
-长期规划中，核心引擎、CLI 和 TUI 会以源码可见、禁止商用、修改版需公开源码的方式发布；产品化 Web UI 会保持闭源。  
-In the long-term plan, the core engine, CLI, and TUI will be released as source-available, noncommercial, and reciprocal software, while the product Web UI will remain closed source.
+长期规划中，核心引擎、CLI 和 TUI 会以源码可见的 Sustainable Use License 发布：允许自托管与公司内部业务使用，但不得作为托管服务对外转售；产品化 Web UI 会保持闭源。  
+In the long-term plan, the core engine, CLI, and TUI will be released under the source-available Sustainable Use License: self-hosting and internal business use are allowed, but reselling it as a hosted service is not, while the product Web UI will remain closed source.
 
 ## 目录 / Table Of Contents
 
@@ -128,14 +128,14 @@ The result is easier to inspect, easier to replay, and better suited as a founda
 
 ## 当前许可边界 / Licensing Boundary
 
-当前规划中，核心引擎、CLI 和未来的 TUI 以源码可见方式发布，但不允许商用，并要求修改版在对外分发或对外提供服务时继续公开对应源码。  
-The core engine, CLI, and future TUI are planned to be released as source-available software: commercial use is prohibited, and modified versions must continue to publish corresponding source code when distributed or offered to external users.
+当前规划中，核心引擎、CLI 和未来的 TUI 以源码可见的 Sustainable Use License 发布：允许阅读、修改、自托管，以及公司内部业务使用；分发只能免费且用于非商业目的；不得作为托管/受管服务对外提供其主要能力。  
+The core engine, CLI, and future TUI are planned to be released under the source-available Sustainable Use License: you may read, modify, self-host, and use them for internal business purposes; redistribution must be free and non-commercial; and you may not offer their substantial features to third parties as a hosted or managed service.
 
 当前规划中的闭源部分是产品化 Web UI 以及围绕它构建的私有产品层。  
 The planned closed-source surface is the product Web UI and the private product layer built around it.
 
-这个边界是有意设计的：核心推理与讨论编排应该可检查、可学习、可修改，但不应被直接闭源商用；而产品化 Web 呈现不必绑定同样的发布策略。  
-This boundary is intentional: the reasoning core and orchestration should be inspectable, learnable, and modifiable, but not directly turned into closed commercial products; the product Web presentation does not need to follow the same release policy.
+这个边界是有意设计的：核心推理与讨论编排应该可检查、可学习、可修改，也可以在工作场景内部使用，但不应被直接转售为托管服务；而产品化 Web 呈现不必绑定同样的发布策略。  
+This boundary is intentional: the reasoning core and orchestration should be inspectable, learnable, modifiable, and usable inside a workplace, but not resold as a hosted service; the product Web presentation does not need to follow the same release policy.
 
 ## 核心特性 / Key Features
 
@@ -435,8 +435,8 @@ The long-form commands are still supported, but they are no longer the primary s
 
 ## 许可说明 / Licensing
 
-本仓库采用自定义的 [Agora Community License 1.0](./LICENSE)。  
-This repository is licensed under the custom [Agora Community License 1.0](./LICENSE).
+本仓库采用 [Sustainable Use License 1.1](./LICENSE)（与 n8n 同一许可族），版权人为 Rayson Meng。  
+This repository is licensed under the [Sustainable Use License 1.1](./LICENSE) (the same license family used by n8n), with Rayson Meng as the copyright holder.
 
 它不是 OSI 定义下的开源许可证。  
 It is not an OSI-approved open-source license.
@@ -444,20 +444,16 @@ It is not an OSI-approved open-source license.
 这个许可证的核心规则是：  
 The core rules of the license are:
 
-- 可以查看源码。  
-  You may view the source code.
-- 可以在非商用前提下修改源码。  
-  You may modify the source code for noncommercial purposes.
-- 可以在非商用前提下分发原版或修改版。  
-  You may redistribute the original or modified versions for noncommercial purposes.
-- 不得将本项目或衍生版本用于商业用途。  
-  You may not use the project or derivative works for commercial purposes.
-- 修改版如果对外分发，必须提供对应源码。  
-  If you distribute a modified version, you must provide the corresponding source code.
-- 修改版如果以服务形式对外提供给用户，也必须向这些用户提供对应源码。  
-  If you provide a modified version as a service to external users, you must also provide corresponding source code to those users.
-- 不得把原项目或修改版变成闭源发布。  
-  You may not turn the original project or a derivative work into a closed-source release.
+- 可以查看、修改、自托管源码。  
+  You may view, modify, and self-host the source code.
+- 可以用于你自己的公司内部业务，或非商业/个人用途。  
+  You may use it for your own internal business purposes, or for non-commercial or personal use.
+- 可以分发原版或修改版，但必须免费且用于非商业目的。  
+  You may distribute the original or modified versions, but only free of charge and for non-commercial purposes.
+- 不得作为托管/受管服务，把其主要能力对外提供给第三方。  
+  You may not provide its substantial features to third parties as a hosted or managed service.
+- 必须保留许可与版权声明，修改版需注明已修改。  
+  You must keep the license and copyright notices, and mark any modifications.
 
 更易读的解释见 [LICENSING.md](./LICENSING.md)。  
 See [LICENSING.md](./LICENSING.md) for a plain-language explanation.
@@ -619,8 +615,8 @@ Stabilizing the CLI first makes it much easier to iterate on prompts, fault tole
 
 ### TUI 和 Web UI 的关系是什么？ / What is the relationship between the TUI and the Web UI?
 
-TUI 会和 CLI 一样复用同一套 core 层，并计划按相同的源码可见非商用互惠许可发布。  
-The TUI will reuse the same core layer as the CLI and is planned to ship under the same source-available, noncommercial, reciprocal license.
+TUI 会和 CLI 一样复用同一套 core 层，并计划按相同的源码可见 Sustainable Use License 发布。  
+The TUI will reuse the same core layer as the CLI and is planned to ship under the same source-available Sustainable Use License.
 
 Web UI 会继续复用 core 层，但产品化实现保持闭源。  
 The Web UI will also reuse the core layer, but the productized implementation will remain closed source.
@@ -635,18 +631,21 @@ The current default provider is `duckduckgo`, and the grounding layer will conti
 
 ### 这个仓库的许可证是什么？ / What license does this repository use?
 
-本仓库使用自定义的 [Agora Community License 1.0](./LICENSE)。  
-This repository uses the custom [Agora Community License 1.0](./LICENSE).
+本仓库使用 [Sustainable Use License 1.1](./LICENSE)（与 n8n 同一许可族）。  
+This repository uses the [Sustainable Use License 1.1](./LICENSE) (the same license family used by n8n).
 
-它允许查看、修改和非商用分发源码，但禁止商业使用，并要求修改版在对外分发或对外提供服务时继续公开对应源码。  
-It allows viewing, modifying, and noncommercial redistribution of the source code, but prohibits commercial use and requires modified versions to continue publishing corresponding source code when distributed or offered as a service.
+它允许查看、修改、自托管，并可用于公司内部业务；分发须免费且非商业；但不得作为托管服务对外转售其主要能力。  
+It allows viewing, modifying, self-hosting, and internal business use; redistribution must be free and non-commercial; but you may not resell its substantial features to third parties as a hosted service.
+
+贡献者提交 PR 即视为同意 [CLA](./CLA.md)，Owner（Rayson Meng）保留对贡献的再许可权。  
+Submitting a PR constitutes agreement to the [CLA](./CLA.md); the Owner (Rayson Meng) retains the right to relicense contributions.
 
 ## 路线图 / Roadmap
 
 | 阶段 / Phase | 状态 / Status | 目标 / Goals | 公开边界 / Release Boundary |
 | --- | --- | --- | --- |
-| Phase A1 | 已完成。<br>Completed. | 最小引擎闭环：`a`、`t`、3 轮讨论、匿名化、书记员总结、JSONL。<br>Minimum engine loop: `a`, `t`, three rounds, anonymization, secretary summary, and JSONL logs. | 源码可见、禁止商用、修改版需公开源码。<br>Source-available, noncommercial, reciprocal. |
-| Phase A2 | 进行中。<br>In progress. | 计费、完整 CLI、事件契约一致性、测试矩阵、grounding 工程化。<br>Billing, full CLI, event-contract alignment, test matrix, and grounding hardening. | 源码可见、禁止商用、修改版需公开源码。<br>Source-available, noncommercial, reciprocal. |
+| Phase A1 | 已完成。<br>Completed. | 最小引擎闭环：`a`、`t`、3 轮讨论、匿名化、书记员总结、JSONL。<br>Minimum engine loop: `a`, `t`, three rounds, anonymization, secretary summary, and JSONL logs. | 源码可见（Sustainable Use License），允许内部业务使用，不得作为托管服务转售。<br>Source-available (Sustainable Use License); internal business use allowed, no resale as a hosted service. |
+| Phase A2 | 进行中。<br>In progress. | 计费、完整 CLI、事件契约一致性、测试矩阵、grounding 工程化。<br>Billing, full CLI, event-contract alignment, test matrix, and grounding hardening. | 源码可见（Sustainable Use License），允许内部业务使用，不得作为托管服务转售。<br>Source-available (Sustainable Use License); internal business use allowed, no resale as a hosted service. |
 | Phase B | 未开始。<br>Not started. | Web 最小壳接入，同一套 core 驱动 Web renderer。<br>Minimal Web shell on top of the same core renderer boundary. | Core 源码可见，Web 产品层私有。<br>Core source-available, product Web layer private. |
 | Phase C | 未开始。<br>Not started. | 产品化完善、页面、后台、国际化、分享、监控与部署验收。<br>Productization work including pages, back office, i18n, sharing, monitoring, and deployment acceptance. | 混合模式。<br>Mixed boundary. |
 
