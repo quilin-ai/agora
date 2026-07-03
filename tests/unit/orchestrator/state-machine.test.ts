@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { casTransition, validateTransition } from '@/lib/orchestrator/state-machine';
+import { casTransition, markFailed, validateTransition } from '@/lib/orchestrator/state-machine';
 import type { DiscussionStateStore } from '@/lib/orchestrator/types';
 
 describe('state-machine', () => {
@@ -30,6 +30,9 @@ describe('state-machine', () => {
         calls.push(params);
         return true;
       },
+      async markFailed() {
+        return true;
+      },
     };
 
     const updated = await casTransition({
@@ -56,6 +59,9 @@ describe('state-machine', () => {
       async updateStatus() {
         throw new Error('should not be called');
       },
+      async markFailed() {
+        throw new Error('should not be called');
+      },
     };
 
     await expect(
@@ -66,5 +72,27 @@ describe('state-machine', () => {
         store,
       })
     ).rejects.toThrow('Invalid discussion transition');
+  });
+
+  it('markFailed delegates to the store without a fixed from-state', async () => {
+    const calls: Array<{ discussionId: string; updates?: Record<string, unknown> }> = [];
+    const store: DiscussionStateStore = {
+      async updateStatus() {
+        throw new Error('markFailed must not go through fixed-from CAS');
+      },
+      async markFailed(params) {
+        calls.push({ discussionId: params.discussionId, updates: params.updates as Record<string, unknown> });
+        return true;
+      },
+    };
+
+    const marked = await markFailed({
+      discussionId: 'discussion-1',
+      updates: { errorCode: 'BOOM' },
+      store,
+    });
+
+    expect(marked).toBe(true);
+    expect(calls).toEqual([{ discussionId: 'discussion-1', updates: { errorCode: 'BOOM' } }]);
   });
 });

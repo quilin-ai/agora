@@ -27,7 +27,7 @@ import {
   runSecretarySummary,
 } from './secretary';
 import { buildRoundPromptVariables } from './prompt-variables';
-import { casTransition } from './state-machine';
+import { casTransition, markFailed } from './state-machine';
 import {
   createStreamHub,
   ROUND_RULES,
@@ -281,6 +281,14 @@ export async function runConsensusDiscussion(params: {
       );
     }
 
+    // 结算：用 stream-hub 已聚合、落库的真实 raw_cost 结算，并写入 total_platform_price。
+    // 结算失败不应把已完成的讨论翻车，done 事件仍需照常发出。
+    try {
+      await billingResolver.settle?.(discussion.id);
+    } catch {
+      // ponytail: 结算落库失败仅记为账务问题，不回滚已完成的讨论状态。
+    }
+
     const billing = await billingResolver.resolveForDiscussion(discussion.id);
     hub.done(discussion.id, billing);
 
@@ -293,6 +301,7 @@ export async function runConsensusDiscussion(params: {
       hub,
       stateStore: params.stateStore,
       lockStore: params.lockStore,
+      billingResolver,
       now,
     });
 
@@ -471,54 +480,29 @@ async function handleFatalError(params: {
   hub: StreamHub;
   stateStore?: DiscussionStateStore;
   lockStore?: ExecutionLockStore;
+  billingResolver: BillingResolver;
   now: () => Date;
 }): Promise<void> {
   const code =
     params.error instanceof OrchestratorError ? params.error.code : 'ORCHESTRATOR_FATAL_ERROR';
   const message = params.error instanceof Error ? params.error.message : 'Unknown orchestrator error';
 
+  // 单条原子迁移：从 created/streaming/summarizing 任一非终态收敛到 failed。
+  await markFailed({
+    discussionId: params.discussionId,
+    updates: {
+      failedAt: params.now(),
+      errorCode: code,
+      errorMessage: message,
+    },
+    store: params.stateStore,
+  }).catch(() => undefined);
+
+  // 账务收尾：释放未消耗的预占额度（CLI/test 走 zero resolver，release 为 undefined，跳过）。
   try {
-    await casTransition({
-      discussionId: params.discussionId,
-      from: 'streaming',
-      to: 'failed',
-      updates: {
-        failedAt: params.now(),
-        errorCode: code,
-        errorMessage: message,
-      },
-      store: params.stateStore,
-    });
+    await params.billingResolver.release?.(params.discussionId);
   } catch {
-    try {
-      await casTransition({
-        discussionId: params.discussionId,
-        from: 'summarizing',
-        to: 'failed',
-        updates: {
-          failedAt: params.now(),
-          errorCode: code,
-          errorMessage: message,
-        },
-        store: params.stateStore,
-      });
-    } catch {
-      try {
-        await casTransition({
-          discussionId: params.discussionId,
-          from: 'created',
-          to: 'failed',
-          updates: {
-            failedAt: params.now(),
-            errorCode: code,
-            errorMessage: message,
-          },
-          store: params.stateStore,
-        });
-      } catch {
-        // Ignore terminal transition failures while cleaning up.
-      }
-    }
+    // ponytail: 账务释放失败不阻塞失败收尾，锁与状态仍需清理。
   }
 
   await releaseLock(

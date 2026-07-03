@@ -123,6 +123,14 @@ export interface DiscussionStateStore {
     to: DiscussionStatus;
     updates?: DiscussionStateUpdates;
   }): Promise<boolean>;
+  /**
+   * 从任意非终态（created/streaming/summarizing）原子迁移到 failed。
+   * 用于 handleFatalError：单条带 status IN(...) 的 UPDATE，避免固定 from 的 CAS 落空导致僵尸讨论。
+   */
+  markFailed(params: {
+    discussionId: string;
+    updates?: DiscussionStateUpdates;
+  }): Promise<boolean>;
 }
 
 export interface LockReleaseInput {
@@ -159,6 +167,10 @@ export interface ConsensusRepository {
 
 export interface BillingResolver {
   resolveForDiscussion(discussionId: string): Promise<BillingCost>;
+  /** 成功完成：用已聚合的真实 raw_cost 结算，并落库 total_platform_price。 */
+  settle?(discussionId: string): Promise<void>;
+  /** 失败收尾：释放未消耗的预占额度。 */
+  release?(discussionId: string): Promise<void>;
 }
 
 export interface StreamHub {
