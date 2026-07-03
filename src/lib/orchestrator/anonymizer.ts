@@ -3,10 +3,16 @@ import type {
   AnonymizationStore,
 } from './types';
 
+// 只剥离「自指身份」句式，绝不做全文关键词消杀：正文里的 "AI"、模型名等
+// 讨论内容必须保留（README 主打示例问题本身就含 "AI"）。
 export const IDENTITY_PATTERNS = [
-  /\b(?:claude|gpt|gemini|llama|qwen|deepseek|grok|openai|anthropic|google|meta)\b/gi,
-  /\b(?:ai|assistant|language model)\b/gi,
-  /(?:我|i)\s*(?:是|am|作为|as)\s*(?:一个|an?\s+)?(?:ai|assistant|language model|语言模型)/gi,
+  // English self-identification: "I am (an) <identity>" / "I'm <identity>"
+  /\bi\s*(?:am|['’]m)\s+(?:an?\s+)?(?:claude|chatgpt|gpt|gemini|llama|qwen|deepseek|grok|openai|anthropic|ai\s+assistant|assistant|large\s+language\s+model|language\s+model|ai)\b/gi,
+  // English "as a(n) <identity> ..." self-framing
+  /\bas\s+an?\s+(?:ai\s+assistant|ai\s+language\s+model|large\s+language\s+model|language\s+model|assistant|ai)\b/gi,
+  // Chinese self-identification: "我是/我作为/作为(一个)<identity>"
+  /(?:我是|我作为|作为)\s*(?:一(?:个|款|名))?\s*(?:claude|chatgpt|gpt|gemini|llama|qwen|deepseek|grok|openai|anthropic|ai\s*助手|助手|大语言模型|语言模型|人工智能|ai)/gi,
+  // Explicit model-id / identity declaration: "model id: ..." / "模型身份：..."
   /(?:模型|model)\s*(?:身份|id)?\s*[:：]\s*\S+/gi,
 ] as const;
 
@@ -123,7 +129,8 @@ function stripIdentitySignals(text: string, modelIds: string[]): string {
     .replace(/[`*_>#]/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s{2,}/g, ' ')
+    // 只压行内多余空格，保留换行/段落结构（此前 /\s{2,}/ 会把段落换行也压成单空格）。
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
