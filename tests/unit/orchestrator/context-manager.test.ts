@@ -75,6 +75,25 @@ describe('context-manager', () => {
     expect(state.must_answer_in_next_round).toContain('m1 received direct challenges');
   });
 
+  it('only marks challenged_by when a response actually names another model (no keyword false-positives)', () => {
+    const state = compressRoundState({
+      round: 2,
+      responses: [
+        // 有分歧词但没点名任何模型 → 不应把别人标为被挑战
+        createResponse('m1', '我强烈不同意上面的方案，disagree with the whole direction。'),
+        // 明确点名 m1 → 才算挑战 m1
+        createResponse('m2', '我认为 m1 的成本估计有 45% 的偏差，需要重新评估。'),
+      ],
+      previousStates: [],
+    });
+
+    const m1Pos = state.model_positions.find((position) => position.logical_model_id === 'm1');
+    const m2Pos = state.model_positions.find((position) => position.logical_model_id === 'm2');
+
+    expect(m1Pos?.challenged_by).toEqual([]);
+    expect(m2Pos?.challenged_by).toContain('m1');
+  });
+
   it('merges compressed states and serializes them as JSON', () => {
     const first = compressRoundState({
       round: 1,

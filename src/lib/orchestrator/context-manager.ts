@@ -170,10 +170,13 @@ function extractChallengeTargets(
 ): string[] {
   const lowered = text.toLowerCase();
 
+  // 只在正文真的点名了某个模型时才算「被挑战」。
+  // 删除了原来的 /不同意|disagree|challenge/ 启发式：它与 modelId 无关，只要出现一个
+  // 分歧词就把所有其他模型全标为被挑战，制造大量误标。
   return responses
     .filter((response) => response.modelId !== currentModelId)
     .map((response) => response.modelId)
-    .filter((modelId) => lowered.includes(modelId.toLowerCase()) || /不同意|质疑|反驳|disagree|challenge/i.test(text))
+    .filter((modelId) => lowered.includes(modelId.toLowerCase()))
     .slice(0, MAX_CONFLICT_ITEMS);
 }
 
