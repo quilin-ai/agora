@@ -406,7 +406,8 @@ describe('runConsensusDiscussion', () => {
     expect(events.some((event) => event.type === 'summary')).toBe(true);
     expect(events.some((event) => event.type === 'done')).toBe(true);
     expect(events.filter((event) => event.type === 'round_done')).toHaveLength(3);
-    expect(vi.mocked(anonymizerModule.anonymizeRoundResponsesForReviewer)).toHaveBeenCalledTimes(3);
+    // 3 次 round-2 匿名评审 + 3 次 round-3 rebuttal（round 3 现在基于 round-2 匿名真实全文）
+    expect(vi.mocked(anonymizerModule.anonymizeRoundResponsesForReviewer)).toHaveBeenCalledTimes(6);
     expect(vi.mocked(anonymizerModule.anonymizeRoundResponsesForReviewer)).toHaveBeenNthCalledWith(
       1,
       expect.any(Array),
@@ -421,6 +422,18 @@ describe('runConsensusDiscussion', () => {
     );
     expect(vi.mocked(anonymizerModule.anonymizeRoundResponsesForReviewer)).toHaveBeenNthCalledWith(
       3,
+      expect.any(Array),
+      expect.any(Array),
+      'openai/gpt-4o-mini'
+    );
+    expect(vi.mocked(anonymizerModule.anonymizeRoundResponsesForReviewer)).toHaveBeenNthCalledWith(
+      4,
+      expect.any(Array),
+      expect.any(Array),
+      'openai/gpt-5-nano'
+    );
+    expect(vi.mocked(anonymizerModule.anonymizeRoundResponsesForReviewer)).toHaveBeenNthCalledWith(
+      6,
       expect.any(Array),
       expect.any(Array),
       'openai/gpt-4o-mini'

@@ -15,7 +15,6 @@ import { createOpenRouterClient } from '@/lib/openrouter/client';
 import { anonymizeModels, anonymizeRoundResponsesForReviewer } from './anonymizer';
 import {
   compressRoundState,
-  mergeCompressedStates,
   serializeCompressedState,
   serializeCompressedStates,
 } from './context-manager';
@@ -34,6 +33,7 @@ import {
   streamWithRetry,
 } from './stream-hub';
 import type {
+  AnonymizationMapping,
   BillingResolver,
   ConsensusRepository,
   DiscussionRuntimeRecord,
@@ -204,15 +204,21 @@ export async function runConsensusDiscussion(params: {
     });
 
     hub.progress(discussion.id, 3, 'rebuttal');
-    const compressedContext = serializeCompressedState(
-      mergeCompressedStates([round1.compressedState, round2.compressedState])
-    );
+    const round1Summary = serializeCompressedState(round1.compressedState);
 
     const round3 = await executeRound({
       discussion,
       roundNumber: 3,
       roundType: 'rebuttal',
-      context: compressedContext,
+      // Round 3 rebuts the actual round-2 review text (anonymized, self excluded),
+      // grounded by round-1's compressed summary — not a lossy merged heuristic digest.
+      context: (modelId) =>
+        buildRebuttalContext({
+          round2Responses: round2.responses,
+          mappings,
+          reviewerModelId: modelId,
+          round1Summary,
+        }),
       previousStates: [round1.compressedState, round2.compressedState],
       promptStore,
       client,
@@ -517,6 +523,37 @@ async function handleFatalError(params: {
   ).catch(() => undefined);
 
   params.hub.error(params.discussionId, message);
+}
+
+/**
+ * Round 3 上下文：第2轮匿名评审全文（除本人外）+ 第1轮压缩摘要。
+ * ponytail: 仓库暂无 token 计数器，用字符预算近似做长度保护，将来接入 tokenizer 时替换即可。
+ */
+export const REBUTTAL_ROUND2_CHAR_BUDGET = 6000;
+
+export function buildRebuttalContext(params: {
+  round2Responses: RoundModelResponse[];
+  mappings: AnonymizationMapping[];
+  reviewerModelId: string;
+  round1Summary: string;
+}): string {
+  const anonymizedRound2 = anonymizeRoundResponsesForReviewer(
+    params.round2Responses,
+    params.mappings,
+    params.reviewerModelId
+  );
+  const boundedRound2 =
+    anonymizedRound2.length > REBUTTAL_ROUND2_CHAR_BUDGET
+      ? `${anonymizedRound2.slice(0, REBUTTAL_ROUND2_CHAR_BUDGET)}\n…（前文过长，已按长度预算截断）`
+      : anonymizedRound2;
+
+  return [
+    '【第2轮匿名评审全文（除你本人外）】',
+    boundedRound2,
+    '',
+    '【第1轮压缩摘要】',
+    params.round1Summary,
+  ].join('\n');
 }
 
 function validateParticipants(discussion: DiscussionRuntimeRecord): void {
