@@ -119,7 +119,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     discussionId: id,
     onEvent,
   })
-    .then(async ({ role, discussion: attachedDiscussion }) => {
+    .then(async ({ role, discussion: attachedDiscussion, execution }) => {
       if (role === 'observer') {
         // 无法持锁：返回 restore(can_stream=false) 关闭连接
         const completedMessages = await getCompletedRoundMessages(id, attachedDiscussion.last_completed_round);
@@ -133,8 +133,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         });
         await send({ type: 'restore', data: restoreData });
         await writer.close();
+        return;
       }
-      // owner 角色：onEvent 回调会推送所有事件；orchestrator 完成后关闭
+
+      // owner 角色：onEvent 回调推送实时事件；必须 await orchestration，
+      // 否则失败会变成 unhandled rejection 打崩进程，且流永不关闭。
+      if (execution) {
+        try {
+          await execution;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : '内部错误';
+          await send({ type: 'error', data: { code: 'DISCUSSION_FAILED', message } });
+        }
+        await writer.close().catch(() => {});
+      }
     })
     .catch(async (err) => {
       const message = err instanceof Error ? err.message : '内部错误';
