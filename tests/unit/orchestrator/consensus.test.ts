@@ -364,6 +364,9 @@ describe('runConsensusDiscussion', () => {
           transitions.push({ from: params.from, to: params.to });
           return true;
         },
+        async markFailed() {
+          return true;
+        },
       },
       lockStore: {
         async acquireLock() {
@@ -454,6 +457,9 @@ describe('runConsensusDiscussion', () => {
         async updateStatus() {
           return true;
         },
+        async markFailed() {
+          return true;
+        },
       },
       lockStore: {
         async acquireLock() {
@@ -533,6 +539,7 @@ describe('runConsensusDiscussion', () => {
   it('fails the discussion when a round drops below the minimum live participant threshold', async () => {
     const { repository, rounds } = createRepository();
     const transitions: Array<{ from: string; to: string }> = [];
+    const failedCalls: string[] = [];
 
     await expect(
       runConsensusDiscussion({
@@ -546,6 +553,10 @@ describe('runConsensusDiscussion', () => {
         stateStore: {
           async updateStatus(params) {
             transitions.push({ from: params.from, to: params.to });
+            return true;
+          },
+          async markFailed(params) {
+            failedCalls.push(params.discussionId);
             return true;
           },
         },
@@ -568,10 +579,9 @@ describe('runConsensusDiscussion', () => {
         status: 'failed',
       }),
     ]);
-    expect(transitions).toEqual([
-      { from: 'created', to: 'streaming' },
-      { from: 'streaming', to: 'failed' },
-    ]);
+    // 正常迁移只到 streaming；失败收尾走 markFailed（单条 IN(...) UPDATE），不再是固定 from 的 CAS。
+    expect(transitions).toEqual([{ from: 'created', to: 'streaming' }]);
+    expect(failedCalls).toEqual(['discussion-1']);
   });
 
   it('I01 — 1 model TTFT timeout is skipped and discussion continues with 2 remaining models', async () => {
@@ -590,6 +600,9 @@ describe('runConsensusDiscussion', () => {
       lockAlreadyAcquired: true,
       stateStore: {
         async updateStatus() {
+          return true;
+        },
+        async markFailed() {
           return true;
         },
       },
@@ -629,6 +642,7 @@ describe('runConsensusDiscussion', () => {
   it('C06 — all models fail causes discussion to transition to failed state', async () => {
     const { repository, rounds } = createRepository();
     const transitions: Array<{ from: string; to: string }> = [];
+    const failedCalls: string[] = [];
 
     await expect(
       runConsensusDiscussion({
@@ -642,6 +656,10 @@ describe('runConsensusDiscussion', () => {
         stateStore: {
           async updateStatus(params) {
             transitions.push({ from: params.from, to: params.to });
+            return true;
+          },
+          async markFailed(params) {
+            failedCalls.push(params.discussionId);
             return true;
           },
         },
@@ -659,7 +677,138 @@ describe('runConsensusDiscussion', () => {
     });
 
     expect(rounds[0]).toMatchObject({ roundNumber: 1, status: 'failed' });
-    // Transitions end in 'failed' — caller is responsible for triggering billing refund
-    expect(transitions.at(-1)).toEqual({ from: 'streaming', to: 'failed' });
+    // 失败收尾通过 markFailed 落 failed，调用方随后触发账务 release/refund。
+    expect(failedCalls).toEqual(['discussion-1']);
+  });
+
+  it('settles billing on success and releases the hold when the discussion fails', async () => {
+    const settled: string[] = [];
+    const released: string[] = [];
+    const billingResolver: BillingResolver = {
+      async resolveForDiscussion() {
+        return { raw_cost: 0.0004, platform_price: 0.0005 };
+      },
+      async settle(discussionId) {
+        settled.push(discussionId);
+      },
+      async release(discussionId) {
+        released.push(discussionId);
+      },
+    };
+
+    // 成功路径：settle 被调用，release 不被调用
+    const success = createRepository();
+    await runConsensusDiscussion({
+      discussionId: 'discussion-1',
+      actor: { userId: 'u1', source: 'test' },
+      onEvent: () => undefined,
+      repository: success.repository,
+      promptStore: createPromptStore(),
+      client: createClient(),
+      billingResolver,
+      lockAlreadyAcquired: true,
+      stateStore: {
+        async updateStatus() {
+          return true;
+        },
+        async markFailed() {
+          return true;
+        },
+      },
+      lockStore: {
+        async acquireLock() {
+          return true;
+        },
+        async releaseLock() {
+          return true;
+        },
+      },
+    });
+
+    expect(settled).toEqual(['discussion-1']);
+    expect(released).toEqual([]);
+
+    // 失败路径：release 被调用（settle 不再触发）
+    const failure = createRepository();
+    await expect(
+      runConsensusDiscussion({
+        discussionId: 'discussion-1',
+        actor: { userId: 'u1', source: 'test' },
+        onEvent: () => undefined,
+        repository: failure.repository,
+        promptStore: createPromptStore(),
+        client: createAllModelsFailClient(),
+        billingResolver,
+        lockAlreadyAcquired: true,
+        stateStore: {
+          async updateStatus() {
+            return true;
+          },
+          async markFailed() {
+            return true;
+          },
+        },
+        lockStore: {
+          async acquireLock() {
+            return true;
+          },
+          async releaseLock() {
+            return true;
+          },
+        },
+      })
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_LIVE_MODELS' });
+
+    expect(released).toEqual(['discussion-1']);
+    expect(settled).toEqual(['discussion-1']);
+  });
+
+  it('marks a discussion failed when it fails during the summarizing phase (zombie fix)', async () => {
+    const base = createRepository();
+    const transitions: Array<{ from: string; to: string }> = [];
+    const failedCalls: string[] = [];
+
+    // Rounds 1-3 succeed; persistence of the final summary throws while status = 'summarizing'.
+    // Before the fix, handleFatalError's fixed-from CAS(streaming->failed) missed and left a zombie.
+    const repository: ConsensusRepository = {
+      ...base.repository,
+      async saveSummary() {
+        throw new Error('failed to persist summary');
+      },
+    };
+
+    await expect(
+      runConsensusDiscussion({
+        discussionId: 'discussion-1',
+        actor: { userId: 'u1', source: 'test' },
+        onEvent: () => undefined,
+        repository,
+        promptStore: createPromptStore(),
+        client: createClient(),
+        lockAlreadyAcquired: true,
+        stateStore: {
+          async updateStatus(params) {
+            transitions.push({ from: params.from, to: params.to });
+            return true;
+          },
+          async markFailed(params) {
+            failedCalls.push(params.discussionId);
+            return true;
+          },
+        },
+        lockStore: {
+          async acquireLock() {
+            return true;
+          },
+          async releaseLock() {
+            return true;
+          },
+        },
+      })
+    ).rejects.toThrow('failed to persist summary');
+
+    // Reached the summarizing state, then failed via the atomic markFailed (not a fixed-from CAS).
+    expect(transitions.at(-1)).toEqual({ from: 'streaming', to: 'summarizing' });
+    expect(failedCalls).toEqual(['discussion-1']);
   });
 });

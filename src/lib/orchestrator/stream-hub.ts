@@ -6,6 +6,7 @@ import type {
   SSEEvent,
 } from '@/lib/types';
 import { toDoneEventData, toRestoreEventData } from '@/lib/types';
+import { rawCostForTokens } from '@/lib/billing';
 import { sseEventSchema } from '@/lib/types/schemas';
 
 import type {
@@ -14,8 +15,6 @@ import type {
   RoundModelResponse,
   StreamHub,
 } from './types';
-
-const PRICE_UNIT_DIVISOR = 1_000_000;
 
 export const ROUND_RULES = {
   MODEL_TIMEOUT_MS: 45_000,
@@ -403,11 +402,10 @@ async function streamSingle(params: {
         const result = next.value;
         const latencyMs = Date.now() - startedAt;
         const resolvedTtftMs = ttftMs ?? latencyMs;
-        const rawCost = estimateRawCost({
-          actualModelId: params.actualModelId,
+        const rawCost = rawCostForTokens({
           inputTokens: result.usage.promptTokens,
           outputTokens: result.usage.completionTokens,
-          pricingData: params.pricingData,
+          pricing: params.pricingData?.[params.actualModelId],
         });
 
         params.hub.modelDone({
@@ -486,24 +484,6 @@ async function withTimeout<T>(
       clearTimeout(timeoutHandle);
     }
   }
-}
-
-function estimateRawCost(params: {
-  actualModelId: string;
-  inputTokens: number;
-  outputTokens: number;
-  pricingData?: ModelPricingTable | null;
-}): number {
-  const pricing = params.pricingData?.[params.actualModelId];
-
-  if (!pricing) {
-    return 0;
-  }
-
-  const inputCost = (params.inputTokens / PRICE_UNIT_DIVISOR) * pricing.input;
-  const outputCost = (params.outputTokens / PRICE_UNIT_DIVISOR) * pricing.output;
-
-  return Number((inputCost + outputCost).toFixed(6));
 }
 
 export function inferErrorType(error: unknown): string {

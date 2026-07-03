@@ -75,6 +75,45 @@ describe('session-starter', () => {
     );
   });
 
+  it('passes a billing resolver on the web path and omits it on the cli path', async () => {
+    const webRun = vi.fn(async () => undefined);
+    await startOrAttachDiscussion({
+      actor: { userId: 'u1', source: 'web' },
+      discussionId: 'd1',
+      onEvent: () => undefined,
+      repository: { async getDiscussion() { return createDiscussion('created'); } },
+      lockStore: {
+        async acquireLock() { return true; },
+        async releaseLock() { return true; },
+      },
+      runner: webRun,
+    });
+
+    expect(webRun).toHaveBeenCalledWith(
+      expect.objectContaining({ billingResolver: expect.anything() })
+    );
+
+    const cliRun = vi.fn(async () => undefined);
+    await startOrAttachDiscussion({
+      actor: { userId: 'u1', source: 'cli' },
+      discussionId: 'd1',
+      onEvent: () => undefined,
+      repository: { async getDiscussion() { return createDiscussion('created'); } },
+      lockStore: {
+        async acquireLock() { return true; },
+        async releaseLock() { return true; },
+      },
+      runner: cliRun,
+    });
+
+    expect(cliRun).toHaveBeenCalledWith(
+      expect.objectContaining({ discussionId: 'd1', lockAlreadyAcquired: true })
+    );
+    expect(cliRun).not.toHaveBeenCalledWith(
+      expect.objectContaining({ billingResolver: expect.anything() })
+    );
+  });
+
   it('throws INVALID_DISCUSSION_STATE before starting the orchestrator', async () => {
     const run = vi.fn(async () => undefined);
 

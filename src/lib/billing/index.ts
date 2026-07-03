@@ -22,6 +22,9 @@ export const BILLING_CONSTANTS = {
   PLATFORM_MARGIN: 1.15,
 } as const;
 
+/** 定价单位：pricingData 的 input/output 均为「每 1M token」价格。 */
+export const PRICE_UNIT_DIVISOR = 1_000_000;
+
 // ─── 错误 ────────────────────────────────────────────────────────────────────
 
 export class InsufficientCreditsError extends Error {
@@ -61,11 +64,31 @@ export interface BillingStore {
 
 // ─── 内部工具函数 ──────────────────────────────────────────────────────────────
 
-/** raw_cost → platform_price（只允许在 hold/settle 内调用） */
-function toPlatformPrice(rawCost: number): number {
+/** raw_cost → platform_price（只允许在 hold/settle 内做一次；对外仅供结算落库读取） */
+export function toPlatformPrice(rawCost: number): number {
   return Number(
     (rawCost * BILLING_CONSTANTS.OPENROUTER_FEE * BILLING_CONSTANTS.PLATFORM_MARGIN).toFixed(4)
   );
+}
+
+/**
+ * 单次模型调用的 raw_cost（唯一的 per-1M 计价实现）。
+ * pricingData 的 input/output 是每 1M token 价格，因此除以 PRICE_UNIT_DIVISOR。
+ * billing.estimateRawCost 与 stream-hub 都复用此函数，避免单位漂移。
+ */
+export function rawCostForTokens(params: {
+  inputTokens: number;
+  outputTokens: number;
+  pricing?: { input: number; output: number } | null;
+}): number {
+  if (!params.pricing) {
+    return 0;
+  }
+
+  const inputCost = (params.inputTokens / PRICE_UNIT_DIVISOR) * params.pricing.input;
+  const outputCost = (params.outputTokens / PRICE_UNIT_DIVISOR) * params.pricing.output;
+
+  return Number((inputCost + outputCost).toFixed(6));
 }
 
 // ─── 公开 API ─────────────────────────────────────────────────────────────────
@@ -94,12 +117,12 @@ export function estimateRawCost(params: {
   let rawCost = 0;
 
   for (const modelId of models) {
-    const pricing = pricingData[modelId];
-    if (!pricing) continue;
     rawCost +=
-      (estimatedInputTokensPerModel * pricing.input +
-        estimatedOutputTokensPerModel * pricing.output) *
-      maxRounds;
+      rawCostForTokens({
+        inputTokens: estimatedInputTokensPerModel,
+        outputTokens: estimatedOutputTokensPerModel,
+        pricing: pricingData[modelId],
+      }) * maxRounds;
   }
 
   return Number(rawCost.toFixed(6));

@@ -1,17 +1,20 @@
 import { randomUUID } from 'crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 import { auth } from '@/lib/auth';
 import { hold, estimateRawCost, InsufficientCreditsError } from '@/lib/billing';
 import { db } from '@/lib/db';
-import { conversations, billingSnapshots } from '@/lib/db/schema';
+import { conversations, billingSnapshots, users } from '@/lib/db/schema';
 import {
   validateTopicInput,
   validatePlanModelAccess,
   assertTopicHashNotDuplicated,
+  assertPlanDailyLimit,
+  countDiscussionsCreatedToday,
   RiskControlError,
+  type UserPlan,
 } from '@/lib/security/risk-control';
 import type { ApiErrorResponse } from '@/lib/types';
 
@@ -27,9 +30,22 @@ async function loadLatestBillingSnapshot() {
   const rows = await db
     .select()
     .from(billingSnapshots)
-    .orderBy(billingSnapshots.effectiveFrom)
+    .orderBy(desc(billingSnapshots.effectiveFrom))
     .limit(1);
   return rows[0] ?? null;
+}
+
+function normalizePlan(plan: string | null | undefined): UserPlan {
+  return plan === 'pro' || plan === 'pro_max' || plan === 'ultra' ? plan : 'free';
+}
+
+async function loadUserPlan(userId: string): Promise<UserPlan> {
+  const rows = await db
+    .select({ plan: users.plan })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return normalizePlan(rows[0]?.plan);
 }
 
 export async function POST(req: NextRequest) {
@@ -100,14 +116,31 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 
+  // 读取真实用户 plan（session 只携带 id，plan 落在 users 表）
+  const userPlan = await loadUserPlan(userId);
+
   // 模型权限校验（budgetModels 对应 allowedModels 环境变量）
   try {
-    validatePlanModelAccess({ plan: 'free', models: resolvedModels });
+    validatePlanModelAccess({ plan: userPlan, models: resolvedModels });
   } catch (err) {
     if (err instanceof RiskControlError) {
       return Response.json(
         { error: { code: err.code, message: err.message } } satisfies ApiErrorResponse,
         { status: err.code === 'MODEL_NOT_ALLOWED' ? 403 : 400 }
+      );
+    }
+    throw err;
+  }
+
+  // plan 日限（council 每日额度）
+  try {
+    const usedToday = await countDiscussionsCreatedToday({ userId, mode: 'council' });
+    assertPlanDailyLimit({ plan: userPlan, mode: 'council', usedToday });
+  } catch (err) {
+    if (err instanceof RiskControlError) {
+      return Response.json(
+        { error: { code: err.code, message: err.message } } satisfies ApiErrorResponse,
+        { status: err.code === 'RATE_LIMITED' ? 429 : 400 }
       );
     }
     throw err;
